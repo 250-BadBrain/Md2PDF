@@ -1,4 +1,20 @@
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs/promises';
+import { extractPdfText } from './pdf-text';
+
+test('local fonts produce searchable Chinese text across browser engines', async ({page})=>{
+  await page.goto('/'); const bytes=[...await fs.readFile('tests/fixtures/fonts/test.ttf')];
+  const result=await page.evaluate(async bytes=>{
+    const {importFont,activeFont,fontFaceCss}=await import('/src/fonts.ts');
+    await importFont(new File([new Uint8Array(bytes)],'test.ttf'));
+    let rejected=false;try{await importFont(new File(['bad'],'broken.ttf'));}catch{rejected=true;}
+    const {paginateHtml}=await import('/src/pagination.ts');const {renderImagePdf}=await import('/src/export.ts');
+    const pages=await paginateHtml('<p>中文测试 English</p>');const pdf=await renderImagePdf(pages,{}, {searchable:true,quality:'small'});
+    return {rejected,name:activeFont()?.name,css:fontFaceCss().startsWith('@font-face'),bytes:[...new Uint8Array(await pdf.arrayBuffer())]};
+  },bytes);
+  expect(result.rejected).toBe(true);expect(result.name).toBe('test.ttf');expect(result.css).toBe(true);
+  const text=await extractPdfText(new Uint8Array(result.bytes));expect(text).toContain('中文测试');expect(text).toContain('English');
+});
 
 test('renders and prepares a sandboxed print document across browser engines', async ({ page }) => {
   await page.goto('/');

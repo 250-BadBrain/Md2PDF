@@ -1,5 +1,6 @@
 import type { LayoutSettings } from './settings';
 import { normalizeSettings } from './settings';
+import type { JSZipObject, JSZipStreamHelper } from 'jszip';
 
 export type Project = { id: string; name: string; source: string; path?: string; preferences: LayoutSettings;
   assets: Record<string, Blob>; savedAt: number };
@@ -96,6 +97,27 @@ export function listProjects() {
 export function deleteProject(id: string) {
   return transaction<void>('readwrite', (store, done) => { store.delete(id); done(); });
 }
+export async function renameProject(id: string, name: string) {
+  const trimmed = name.trim().slice(0, 120);
+  if (!trimmed) throw new Error('请输入项目名称');
+  await transaction<void>('readwrite', (store, done) => {
+    const request = store.get(id);
+    request.onsuccess = () => { if (request.result) store.put({ ...request.result, name: trimmed }); done(); };
+  });
+}
+export async function copyProject(id: string) {
+  const original = await loadProject(id);
+  if (!original) throw new Error('项目已不存在');
+  const copy = { ...original, id: crypto.randomUUID(), name: `${original.name.slice(0, 117)} 副本`, savedAt: Date.now(), history: [] };
+  await saveProject(copy);
+  return copy;
+}
+export async function restoreDeletedProject(project: ProjectRecord) {
+  validateProject(project);
+  const assets = await storeAssets(project.assets);
+  const history = await Promise.all(project.history.map(async revision => ({ ...revision, assets: await storeAssets(revision.assets) })));
+  return transaction<void>('readwrite', (store, done) => { store.add({ ...project, assets, history }); done(); });
+}
 export async function exportProject(project: Project) {
   validateProject(project); const { default: JSZip } = await import('jszip'); const zip = new JSZip();
   const assets = await Promise.all(Object.entries(project.assets).map(async ([path, blob], index) => {
@@ -116,6 +138,7 @@ function checkArchive(buffer: ArrayBuffer) {
   for (let i = 0; i < count; i++) {
     if (offset + 46 > end || view.getUint32(offset, true) !== 0x02014b50) throw new Error('ZIP 目录无效');
     total += view.getUint32(offset + 24, true); const length = view.getUint16(offset + 28, true);
+    if (offset + 46 + length + view.getUint16(offset + 30, true) + view.getUint16(offset + 32, true) > end) throw new Error('ZIP 目录越界');
     const name = new TextDecoder().decode(new Uint8Array(buffer, offset + 46, length));
     if (!validProjectPath(name.replace(/\/$/, '')) || (view.getUint16(offset + 8, true) & 1)) throw new Error('ZIP 包含不安全路径或加密文件');
     if (total > MAX_BYTES) throw new Error('展开后的项目超过 100MiB');
@@ -123,21 +146,44 @@ function checkArchive(buffer: ArrayBuffer) {
   }
   if (offset !== end) throw new Error('不支持的 ZIP 目录');
 }
+// Bound actual inflation too: a hostile ZIP can lie about central-directory sizes.
+function readEntry(file: JSZipObject, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = []; let size = 0; let failed = false;
+    // JSZip 3.10 exposes this public method but omits it from JSZipObject typings.
+    const stream = (file as JSZipObject & { internalStream(type: 'uint8array'): JSZipStreamHelper<Uint8Array> }).internalStream('uint8array');
+    stream.on('data', (chunk: Uint8Array) => {
+      if (failed) return;
+      size += chunk.byteLength;
+      if (size > limit) { failed = true; stream.pause(); reject(new Error('项目文件展开大小超出限制或清单大小')); return; }
+      chunks.push(chunk);
+    });
+    stream.on('error', reject);
+    stream.on('end', () => {
+      if (failed) return;
+      const bytes = new Uint8Array(size); let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+      resolve(bytes);
+    });
+    stream.resume();
+  });
+}
 export async function importProject(blob: Blob): Promise<Project> {
   if (blob.size > MAX_BYTES) throw new Error('项目压缩包超过 100MiB');
   const buffer = await blob.arrayBuffer(); checkArchive(buffer);
   const { default: JSZip } = await import('jszip'); const zip = await JSZip.loadAsync(buffer, { createFolders: false });
   const manifest = zip.file('project.json'); if (!manifest) throw new Error('缺少 project.json');
-  const value = JSON.parse(await manifest.async('string'));
-  if (value.version !== 1 || typeof value.name !== 'string' || typeof value.source !== 'string' || !Array.isArray(value.assets) || value.assets.length > 200
+  const value = JSON.parse(new TextDecoder().decode(await readEntry(manifest, MAX_BYTES)));
+  if (!value || typeof value !== 'object' || value.version !== 1 || typeof value.name !== 'string' || typeof value.source !== 'string' || !Array.isArray(value.assets) || value.assets.length > 200
     || (value.path !== undefined && typeof value.path !== 'string')) throw new Error('项目清单格式无效');
   const assets: Record<string, Blob> = Object.create(null);
   const used = new Set<string>();
   for (const entry of value.assets) {
-    if (typeof entry.path !== 'string' || !validProjectPath(entry.path) || !/^assets\/\d+\.bin$/.test(entry.file) || typeof entry.type !== 'string' || !/^image\//.test(entry.type)
+    if (!entry || typeof entry !== 'object' || typeof entry.path !== 'string' || !validProjectPath(entry.path) || !/^assets\/\d+\.bin$/.test(entry.file) || typeof entry.type !== 'string' || !/^image\//.test(entry.type)
       || assets[entry.path] || used.has(entry.file) || !Number.isSafeInteger(entry.size) || entry.size < 0) throw new Error('项目图片清单无效');
     const file = zip.file(entry.file); if (!file) throw new Error('项目图片缺失');
-    const bytes = await file.async('uint8array'); if (bytes.byteLength !== entry.size) throw new Error('项目图片大小不匹配');
+    if (entry.size > MAX_BYTES) throw new Error('项目图片大小超出限制');
+    const bytes = await readEntry(file, entry.size); if (bytes.byteLength !== entry.size) throw new Error('项目图片大小不匹配');
     assets[entry.path] = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: entry.type }); used.add(entry.file);
   }
   const project = { id: crypto.randomUUID(), name: value.name.slice(0, 120), source: value.source, path: value.path, preferences: normalizeSettings(value.preferences), assets, savedAt: Date.now() };

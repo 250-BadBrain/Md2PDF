@@ -1,4 +1,5 @@
 import type { DocumentMeta } from './markdown';
+import {activeFont} from './fonts';
 
 export type LayoutSettings = Required<Pick<DocumentMeta, 'dialect' | 'minParagraphLines' | 'figureNumbers' | 'wideTables' | 'cover' | 'theme' | 'footnotes' | 'softBreaks' | 'paper' | 'orientation' | 'margin' | 'fontFamily' | 'fontSize' | 'lineHeight' | 'header' | 'footer' | 'pageNumbers' | 'tocPageNumbers' | 'chapterNewPage' | 'chapterLevel'>>;
 export const DEFAULT_LAYOUT: LayoutSettings = {
@@ -53,10 +54,10 @@ export function layoutVariables(meta: DocumentMeta) {
     mono: 'Consolas, "Microsoft YaHei", monospace',
   };
   return {
-    '--pdf-heading-font': meta.theme === 'book' ? fonts.serif : 'inherit',
+    '--pdf-heading-font': meta.theme === 'book' ? (activeFont()?'"Md2PDFLocal", ':'')+fonts.serif : 'inherit',
     '--pdf-block-gap': meta.theme === 'compact' ? '0.5em' : '1em',
     '--pdf-page-width': `${width}mm`, '--pdf-page-height': `${height}mm`,
-    '--pdf-font-family': fonts[meta.fontFamily || 'sans'],
+    '--pdf-font-family': (activeFont()?'"Md2PDFLocal", ':'')+fonts[meta.fontFamily || 'sans'],
     '--pdf-font-size': `${meta.fontSize || 14}px`, '--pdf-line-height': String(meta.lineHeight || 1.72),
   };
 }

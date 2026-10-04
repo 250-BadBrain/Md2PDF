@@ -1,8 +1,10 @@
 import { DEFAULT_LAYOUT, normalizeSettings, type LayoutSettings as Preferences } from './settings';
+import { usePanelFocus } from './panel-focus';
 
 export function LayoutSettings({ value, change, close, saved }: { value: Preferences; change: (value: Preferences) => void; close: () => void; saved: boolean }) {
+  const panel = usePanelFocus(close);
   const update = (key: keyof Preferences, next: string | number | boolean) => change(normalizeSettings({ ...value, [key]: next }));
-  return <aside className="layout-settings" aria-label="排版设置">
+  return <aside ref={panel} className="layout-settings" aria-label="排版设置">
     <div className="settings-heading"><h2>排版设置</h2><button onClick={close} type="button">关闭设置</button></div>
     <p>配置自动保存；文档中的 YAML 设置优先。</p>
     {!saved ? <p role="status">浏览器无法保存配置，本次设置仍然有效。</p> : null}

@@ -120,7 +120,7 @@ test('prints a searchable PDF and shows upload/export failures in the UI', async
   expect(buffer.toString('latin1')).toContain('https://example.com');
   expect(buffer.toString('latin1')).toContain('/Dest');
   const text = await extractPdfText(buffer);
-  expect(text).toContain('PDF 验证');
+  expect(text.replace(/\s+/g, ' ')).toContain('PDF 验证');
   expect(text).toContain('第二页');
   expect(text).toContain('开始');
   await page.locator('input[type=file]').first().setInputFiles({ name: 'invalid.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('x') });

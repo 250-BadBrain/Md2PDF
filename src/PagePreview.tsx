@@ -71,7 +71,11 @@ export function PagePreview({ pages, meta, scale, panel }: {
     }}>
       {pages.map((html, index) => <div className="pdf-page-shell" key={index} data-page={index + 1}
         style={{ height: heights[index], width: sizes[index].width / 25.4 * 96 * scale }}>
-        {index >= start && index < end ? <article className="pdf-page" style={{ width: `${sizes[index].width}mm`, height: `${sizes[index].height}mm`, transform: `scale(${scale})` }}
+        {index >= start && index < end ? <article className="pdf-page" tabIndex={0} aria-label={`第 ${index + 1} 页预览，回车定位源码`} onKeyDown={event => {
+          if (event.key !== 'Enter' || event.target !== event.currentTarget) return;
+          const block = event.currentTarget.querySelector('[data-source-line]');
+          if (block) { const location = sourceLocation(block); if (location) navigateToSource(location); }
+        }} style={{ width: `${sizes[index].width}mm`, height: `${sizes[index].height}mm`, transform: `scale(${scale})` }}
           dangerouslySetInnerHTML={{ __html: html }} /> : <div className="page-placeholder">第 {index + 1} 页</div>}
       </div>)}
     </div>

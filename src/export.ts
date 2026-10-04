@@ -3,6 +3,8 @@ import type { DocumentMeta } from './markdown';
 import { pageDimensions } from './settings';
 import { QUALITY, type ExportQuality } from './export-settings';
 import { pageSize } from './page-size';
+import {fontFaceCss} from './fonts';
+import {addTextLayer} from './searchable-pdf';
 
 function createPdfDocument(pages: string[], meta: DocumentMeta) {
   const host = document.createElement('div');
@@ -28,7 +30,7 @@ function createPdfDocument(pages: string[], meta: DocumentMeta) {
   return documentElement;
 }
 
-export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { quality?: ExportQuality; signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
+export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { searchable?:boolean; quality?: ExportQuality; signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
   let element: HTMLElement | undefined;
 
   try {
@@ -81,6 +83,7 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       }
 
       pdf.addImage(imageData, 'JPEG', 0, 0, width, height);
+      if(options.searchable)addTextLayer(pdf,pageElement,width,height);
       const bounds = pageElement.getBoundingClientRect();
       pageElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
         const href = link.getAttribute('href') ?? '';
@@ -148,7 +151,7 @@ async function printHtml(pages: string[], meta: DocumentMeta) {
   const namedPages=pages.map((html,index)=>{const size=pageSize(html,meta);return `@page sheet${index}{size:${size.width}mm ${size.height}mm;margin:0}`;}).join('');
   const printStyle = `@page {size:${width}mm ${height}mm;margin:0} ${namedPages} html,body{margin:0;padding:0;height:auto;background:white} *{-webkit-print-color-adjust:exact;print-color-adjust:exact} .pdf-page{display:block;width:${width}mm;height:${height}mm;margin:0;box-shadow:none;transform:none;break-after:page;break-inside:avoid}.pdf-page:last-child{break-after:auto}.header-anchor{visibility:hidden}.pdf-content{overflow:hidden}`;
   const title = (meta.title || 'Md2PDF').replace(/[<>&"]/g, '');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>${styles.join('\n').replace(/<\/style/gi, '<\\/style')}\n${printStyle}</style></head><body>${wrapper.innerHTML}</body></html>`;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>${fontFaceCss()}\n${styles.join('\n').replace(/<\/style/gi, '<\\/style')}\n${printStyle}</style></head><body>${wrapper.innerHTML}</body></html>`;
 }
 
 export async function printPages(pages: string[], meta: DocumentMeta) {

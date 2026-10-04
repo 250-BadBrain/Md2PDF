@@ -23,6 +23,8 @@ import { loadExportSettings, saveExportSettings, shouldFlushBatch, type ExportQu
 import { ACTIVE_PROJECT, exportProject, importProject, loadProject, saveProject, type Project, type ProjectRecord } from './projects';
 import { ProjectLibrary } from './ProjectLibrary';
 import { pageSize } from './page-size';
+import { FontSettings } from './FontSettings';
+import { activeFont } from './fonts';
 
 type UploadedMarkdownFile = {
   name: string;
@@ -93,7 +95,19 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [pages, setPages] = useState<string[]>([]);
   const [previewMeta, setPreviewMeta] = useState<DocumentMeta>({});
-  const [exportMode, setExportMode] = useState<'print' | 'image'>('print');
+  const [exportMode, setExportMode] = useState<'print' | 'image' | 'direct'>('print');
+  const [fontRevision, setFontRevision] = useState(0);
+  const [workspaceView, setWorkspaceView] = useState('editor');
+  useEffect(() => {
+    const edit = () => { if (window.matchMedia('(max-width:767px)').matches) setWorkspaceView('editor'); };
+    window.addEventListener('source-navigation', edit);
+    return () => window.removeEventListener('source-navigation', edit);
+  }, []);
+  useEffect(() => {
+    const update = () => { clearPreviewCache(); setFontRevision(value => value + 1); };
+    window.addEventListener('local-font-change', update);
+    return () => window.removeEventListener('local-font-change', update);
+  }, []);
   const [exportSettings, setExportSettings] = useState(loadExportSettings);
   const [previewScale, setPreviewScale] = useState(0.7);
   const [isRendering, setIsRendering] = useState(false);
@@ -140,7 +154,9 @@ function App() {
         setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ }
       }
     };
-    window.addEventListener('project-deleted', deleted); return () => window.removeEventListener('project-deleted', deleted);
+    const renamed = (event: Event) => { const detail = (event as CustomEvent<{id:string;name:string}>).detail; if (detail.id === activeProject?.id) setActiveProject(detail); };
+    window.addEventListener('project-renamed', renamed);
+    window.addEventListener('project-deleted', deleted); return () => { window.removeEventListener('project-deleted', deleted); window.removeEventListener('project-renamed', renamed); };
   }, [activeProject]);
 
   const canDownload =
@@ -226,7 +242,7 @@ function App() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [assetUrls, mode, singleFilePath, source, preferences]);
+  }, [assetUrls, mode, singleFilePath, source, preferences, fontRevision]);
 
   useLayoutEffect(() => {
     const panel = previewPanelRef.current;
@@ -357,7 +373,8 @@ function App() {
       setExportStatus('打印对话框已打开：请选择另存为 PDF，关闭浏览器页眉页脚。');
       return;
     }
-    const blob = await renderImagePdf(pages, previewMeta, { quality: exportSettings.quality, signal: exportController.current?.signal, progress: (done, total) => {
+    if (exportMode === 'direct' && !activeFont()) throw new Error('请先在排版设置中导入包含正文字符的 TTF 字体。');
+    const blob = await renderImagePdf(pages, previewMeta, { searchable: exportMode === 'direct', quality: exportSettings.quality, signal: exportController.current?.signal, progress: (done, total) => {
       setDownloadProgress(Math.round(done / total * 85)); setExportStatus(`正在生成第 ${done} / ${total} 页`);
     } });
     exportController.current?.signal.throwIfAborted();
@@ -437,7 +454,7 @@ function App() {
         await downloadSinglePdf();
       }
       setDownloadProgress(100);
-      if (mode === 'batch' || exportMode === 'image') setExportStatus('文件已生成，下载已发起。');
+      if (mode === 'batch' || exportMode !== 'print') setExportStatus('文件已生成，下载已发起。');
     } catch (error) {
       const message = exportController.current?.signal.aborted ? '导出已取消。' : error instanceof Error ? error.message : '导出失败，请稍后重试。';
       setExportStatus('');
@@ -462,11 +479,12 @@ function App() {
         <div className="actions">
           <button type="button" disabled={isDownloading} onClick={() => setShowSettings(!showSettings)}>排版</button>
           <button type="button" disabled={isDownloading || isUploading || !projectReady || mode === 'batch'} onClick={() => setShowProjects(!showProjects)}>项目库</button>
-          <select aria-label="PDF 导出方式" value={mode === 'batch' ? 'image' : exportMode} disabled={isDownloading || mode === 'batch'} onChange={(event) => setExportMode(event.target.value as 'print' | 'image')}>
+          <select aria-label="PDF 导出方式" value={mode === 'batch' ? 'image' : exportMode} disabled={isDownloading || mode === 'batch'} onChange={(event) => setExportMode(event.target.value as 'print' | 'image' | 'direct')}>
             <option value="print">可搜索 PDF（打印保存）</option>
             <option value="image">图像 PDF</option>
+            <option value="direct">可搜索 PDF（直接下载·实验）</option>
           </select>
-          {exportMode === 'image' || mode === 'batch' ? <select aria-label="图像 PDF 清晰度" value={exportSettings.quality} disabled={isDownloading} onChange={(event) => {
+          {exportMode !== 'print' || mode === 'batch' ? <select aria-label="图像 PDF 清晰度" value={exportSettings.quality} disabled={isDownloading} onChange={(event) => {
             const next = { ...exportSettings, quality: event.target.value as ExportQuality }; setExportSettings(next); saveExportSettings(next);
           }}><option value="small">小体积</option><option value="balanced">均衡</option><option value="high">高清</option></select> : null}
           <button type="button" disabled={isDownloading || isUploading} onClick={() => inputRef.current?.click()}>
@@ -506,15 +524,15 @@ function App() {
       </header>
       {offlineStatus ? <div role="status" className="export-status">{offlineStatus}</div> : null}
       {exportStatus ? <div className="export-status" role="status">{exportStatus}</div> : null}
-      {isDownloading && (mode === 'batch' || exportMode === 'image') ? <button type="button" onClick={() => exportController.current?.abort()}>取消导出</button> : null}
+      {isDownloading && (mode === 'batch' || exportMode !== 'print') ? <button type="button" onClick={() => exportController.current?.abort()}>取消导出</button> : null}
       {operationError ? <div className="operation-error" role="alert">{operationError}</div> : null}
       {showProjects ? <ProjectLibrary disabled={isDownloading || isUploading} save={saveCurrentProject} open={applyProject} close={() => setShowProjects(false)}
         exportFile={async () => { await downloadBlob(await exportProject(currentProject()), 'md2pdf-project.zip'); }}
         importFile={async (file) => { const project = await importProject(file); await saveProject(project); applyProject({ ...project, history: [] }); }} /> : null}
-      {showSettings ? <LayoutSettings value={preferences} saved={settingsSaved} close={() => setShowSettings(false)} change={(value) => {
+      {showSettings ? <><LayoutSettings value={preferences} saved={settingsSaved} close={() => setShowSettings(false)} change={(value) => {
         const next = normalizeSettings(value);
         setPreferences(next); setSettingsSaved(saveSettings(next));
-      }} /> : null}
+      }} /><FontSettings text={source} disabled={isDownloading} /></> : null}
 
       {mode === 'batch' ? (
         <section className="batch-message">
@@ -527,7 +545,11 @@ function App() {
           </button>
         </section>
       ) : (
-        <section className="workspace">
+        <section className="workspace" data-view={workspaceView}>
+          <div className="workspace-tabs" aria-label="工作区视图">
+            <button aria-pressed={workspaceView === 'editor'} onClick={() => setWorkspaceView('editor')}>编辑</button>
+            <button aria-pressed={workspaceView === 'preview'} onClick={() => setWorkspaceView('preview')}>预览</button>
+          </div>
           <Editor source={source} change={handleSourceChange} disabled={isDownloading || isUploading} panel={previewPanelRef.current}
             draftStatus={draftStatus} clear={() => { if (clearDraft()) { setDraftEnabled(false); setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ } setDraftStatus('已清除保存的草稿；项目库中的项目仍保留，继续编辑会重新保存。'); } else setDraftStatus('无法清除草稿。'); }}
             download={() => { void downloadBlob(new Blob([source], { type: 'text/markdown;charset=utf-8' }), (singleFileName || 'document.md').replace(/\.(markdown|txt)$/i, '.md')); }} />
@@ -543,6 +565,7 @@ function App() {
             ) : null}
             {warnings.length ? <details className="document-warnings"><summary>文档提示（{warnings.length}）</summary><ul>{warnings.map((warning,index) => <li key={index}>{warning.line ? <button onClick={() => navigateToSource({line:warning.line!,end:warning.end || warning.line!})}>第 {warning.line} 行：{warning.message}</button> : warning.message}</li>)}</ul></details> : null}
             {exportMode === 'print' ? <p className="print-guide">打印时选择“另存为 PDF”、文档纸张尺寸，并关闭浏览器页眉页脚。</p> : null}
+            {exportMode === 'direct' ? <p className="print-guide">实验：图像页面叠加可搜索正文，需要导入 TTF 字体。公式、图表保持图像；emoji、扩展区汉字和矢量输出请使用打印保存。</p> : null}
             <PagePreview pages={pages} meta={previewMeta} scale={previewScale} panel={previewPanelRef.current} />
           </section>
         </section>
