@@ -152,6 +152,13 @@ textarea {
   text-align: center;
 }
 
+.operation-error {
+  padding: 10px 20px;
+  color: #8f3f3f;
+  background: #fff8f6;
+  font-size: 14px;
+}
+
 .pdf-document {
   display: flex;
   flex-direction: column;
@@ -190,8 +197,8 @@ textarea {
 .pdf-page-header,
 .pdf-page-footer {
   position: absolute;
-  left: var(--pdf-page-margin);
-  right: var(--pdf-page-margin);
+  left: var(--pdf-page-margin-left, var(--pdf-page-margin));
+  right: var(--pdf-page-margin-right, var(--pdf-page-margin));
   color: #77776f;
   font-size: 10px;
   line-height: 1.4;
@@ -297,9 +304,10 @@ textarea {
 }
 
 .markdown-body {
+  font-family: var(--pdf-font-family, "Microsoft YaHei", Arial, sans-serif);
   color: #20201d;
-  font-size: 14px;
-  line-height: 1.72;
+  font-size: var(--pdf-font-size, 14px);
+  line-height: var(--pdf-line-height, 1.72);
   overflow-wrap: break-word;
 }
 
@@ -397,6 +405,9 @@ textarea {
 }
 
 .markdown-body .toc-page-number {
+  display: inline-block;
+  min-width: 3ch;
+  flex-shrink: 0;
   color: #77776f;
   font-size: 0.85em;
 }
@@ -534,7 +545,28 @@ textarea {
 .markdown-body pre code {
   padding: 0;
   background: transparent;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown-body .list-item-continuation {
+  list-style: none;
+}
+
+.pagination-scaled {
+  position: relative;
+  overflow: hidden;
+}
+
+.markdown-body details {
+  margin-bottom: 1em;
+}
+
+.markdown-body kbd {
+  padding: 0.1em 0.35em;
+  border: 1px solid #d9d9d2;
+  border-radius: 3px;
+  background: #f1f1ed;
 }
 
 .markdown-body .hljs-comment,
@@ -612,11 +644,29 @@ textarea {
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: calc(var(--pdf-font-size, 14px) * 0.857);
   line-height: 1.55;
   break-inside: auto;
   page-break-inside: auto;
 }
+
+.actions select { max-width: 130px; height: 34px; border: 1px solid #c8c8c2; border-radius: 6px; background: white; }
+.preview-status, .page-navigation { position: sticky; top: 0; z-index: 2; padding: 8px 12px; background: #f7f8f4; border-radius: 6px; font-size: 13px; }
+.page-navigation { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; }
+.page-navigation input { width: 64px; }
+.page-placeholder { height: 100%; background: white; padding: 30px; color: #77776f; }
+.layout-settings { position: fixed; top: 64px; right: 16px; z-index: 10; width: min(360px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px; border: 1px solid #c8c8c2; border-radius: 8px; background: white; box-shadow: 0 8px 30px #0002; }
+.settings-heading { display: flex; justify-content: space-between; align-items: center; }
+.settings-heading h2 { font-size: 18px; margin: 0; }
+.layout-settings p { font-size: 12px; line-height: 1.6; color: #66665f; }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+.settings-grid label { font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.settings-grid input:not([type=checkbox]), .settings-grid select { width: 100%; min-height: 32px; border: 1px solid #c8c8c2; border-radius: 4px; padding: 4px 7px; }
+.settings-grid label:has([type=checkbox]) { flex-direction: row; align-items: center; }
+.settings-wide { grid-column: 1 / -1; }
+.layout-settings button, .page-navigation button { border: 1px solid #c8c8c2; border-radius: 4px; padding: 5px 9px; background: #f7f8f4; cursor: pointer; }
+.table-row-continuation td { border-top-style: dashed; }
+@media (max-width: 720px) { .top-bar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 6px; padding-bottom: 6px; } .actions { flex-wrap: wrap; } }
 
 .markdown-body .page-break {
   display: none;
@@ -764,10 +814,24 @@ textarea {
   }
 
   .preview-panel {
-    padding: 18px;
-  }
-
-  .preview-panel {
     padding: 14px;
   }
 }
+
+@media (max-width: 520px) {
+  .top-bar { padding: 0 10px; }
+  .actions { gap: 5px; }
+  .actions button { min-width: 52px; padding: 0 8px; }
+}
+
+.editor-pane { min-width:0; display:flex; flex-direction:column; height:calc(100vh - 56px); overflow:hidden; }
+.editor-pane .editor { flex:1; min-height:0; height:auto; width:100%; }
+.editor-toolbar,.find-toolbar { display:flex; flex-wrap:wrap; gap:6px; padding:8px; background:#fff; font-size:12px; }
+.editor-toolbar button,.find-toolbar button { padding:5px 8px; border:1px solid #ccc; border-radius:4px; background:white; cursor:pointer; }
+.find-toolbar input { width:130px; }
+.export-status,.document-warnings,.print-guide { padding:8px 12px; font-size:12px; color:#365951; background:#eef5f2; }
+.document-cover { min-height:210mm; display:flex; flex-direction:column; justify-content:center; text-align:center; }
+.document-cover h1 { font-size:36px; }
+.markdown-body h1,.markdown-body h2,.markdown-body h3 { font-family:var(--pdf-heading-font,inherit); }
+.markdown-body p { margin-bottom:var(--pdf-block-gap,1em); }
+@media(max-width:960px) { .editor-pane {height:calc((100vh - 56px)/2);} .editor-pane .editor {height:auto;} }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
+  <rect width="480" height="120" rx="12" fill="#f1f5f0"/>
+  <rect x="24" y="32" width="120" height="56" rx="8" fill="#21625d"/>
+  <rect x="180" y="32" width="120" height="56" rx="8" fill="#3b73b9"/>
+  <rect x="336" y="32" width="120" height="56" rx="8" fill="#27885f"/>
+  <path d="M150 60h22m-7-7 7 7-7 7M306 60h22m-7-7 7 7-7 7" fill="none" stroke="#555852" stroke-width="3"/>
+  <g fill="white" text-anchor="middle" font-family="Arial, sans-serif" font-size="18">
+    <text x="84" y="67">Markdown</text><text x="240" y="67">Preview</text><text x="396" y="67">PDF</text>
+  </g>
+</svg>

@@ -6,17 +6,24 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:browser": "playwright test --project chromium --project webkit",
+    "test:visual": "playwright test tests/visual.spec.ts",
+    "test:compatibility": "vitest run tests/compatibility.test.ts",
+    "test:firefox": "playwright test tests/cross-browser.spec.ts --project firefox"
   },
   "dependencies": {
+    "dompurify": "^3.4.16",
     "highlight.js": "^11.11.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "katex": "^0.17.0",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^14.3.2",
     "markdown-it-abbr": "^2.0.0",
     "markdown-it-anchor": "^9.2.0",
+    "markdown-it-attrs": "^5.0.1",
     "markdown-it-container": "^4.0.0",
     "markdown-it-deflist": "^3.0.1",
     "markdown-it-emoji": "^3.0.0",
@@ -28,17 +35,22 @@
     "markdown-it-task-lists": "^2.1.1",
     "markdown-it-texmath": "^1.0.0",
     "markdown-it-toc-done-right": "^4.2.0",
-    "mermaid": "^11.15.0",
+    "mermaid": "^11.17.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/markdown-it": "^14.1.2",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^29.1.1",
+    "pdfjs-dist": "^6.3.289",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^5.0.3"
   }
 }

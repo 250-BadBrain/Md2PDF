@@ -80,9 +80,16 @@ declare module 'markdown-it-texmath' {
 
   interface TexmathOptions {
     engine: unknown;
-    delimiters?: 'dollars' | 'brackets' | 'gitlab' | 'julia' | 'kramdown';
+    delimiters?: string | string[];
+    katexOptions?: Record<string, unknown>;
   }
 
   const plugin: MarkdownIt.PluginWithOptions<TexmathOptions>;
+  export default plugin;
+}
+
+declare module 'markdown-it-attrs' {
+  import type MarkdownIt from 'markdown-it';
+  const plugin: MarkdownIt.PluginWithOptions<{ allowedAttributes?: string[] }>;
   export default plugin;
 }

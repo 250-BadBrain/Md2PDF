@@ -1,0 +1,1590 @@
+[
+  {
+    "example": 120,
+    "section": "HTML blocks",
+    "markdown": " <div>\n  *hello*\n         <foo><a>\n",
+    "expected": [
+      [
+        "DIV",
+        [],
+        [
+          " *hello* ",
+          [
+            "FOO",
+            [],
+            [
+              [
+                "A",
+                [],
+                [
+                  " "
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "DIV",
+        [],
+        [
+          " *hello* ",
+          [
+            "A",
+            [],
+            [
+              " "
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 121,
+    "section": "HTML blocks",
+    "markdown": "</div>\n*foo*\n",
+    "expected": [
+      " *foo* "
+    ],
+    "actual": [
+      "*foo* "
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 133,
+    "section": "HTML blocks",
+    "markdown": "<Warning>\n*bar*\n</Warning>\n",
+    "expected": [
+      [
+        "WARNING",
+        [],
+        [
+          " *bar* "
+        ]
+      ]
+    ],
+    "actual": [
+      " *bar* "
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 135,
+    "section": "HTML blocks",
+    "markdown": "</ins>\n*bar*\n",
+    "expected": [
+      " *bar* "
+    ],
+    "actual": [
+      "*bar* "
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 139,
+    "section": "HTML blocks",
+    "markdown": "<pre language=\"haskell\"><code>\nimport Text.HTML.TagSoup\n\nmain :: IO ()\nmain = print $ parseTags tags\n</code></pre>\nokay\n",
+    "expected": [
+      [
+        "PRE",
+        [
+          [
+            "language",
+            "haskell"
+          ]
+        ],
+        [
+          [
+            "CODE",
+            [],
+            [
+              "\nimport Text.HTML.TagSoup\n\nmain :: IO ()\nmain = print $ parseTags tags\n"
+            ]
+          ]
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "PRE",
+        [],
+        [
+          [
+            "CODE",
+            [],
+            [
+              "\nimport Text.HTML.TagSoup\n\nmain :: IO ()\nmain = print $ parseTags tags\n"
+            ]
+          ]
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 140,
+    "section": "HTML blocks",
+    "markdown": "<script type=\"text/javascript\">\n// JavaScript example\n\ndocument.getElementById(\"demo\").innerHTML = \"Hello JavaScript!\";\n</script>\nokay\n",
+    "expected": [
+      [
+        "SCRIPT",
+        [
+          [
+            "type",
+            "text/javascript"
+          ]
+        ],
+        [
+          " // JavaScript example document.getElementById(\"demo\").innerHTML = \"Hello JavaScript!\"; "
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 141,
+    "section": "HTML blocks",
+    "markdown": "<style\n  type=\"text/css\">\nh1 {color:red;}\n\np {color:blue;}\n</style>\nokay\n",
+    "expected": [
+      [
+        "STYLE",
+        [
+          [
+            "type",
+            "text/css"
+          ]
+        ],
+        [
+          " h1 {color:red;} p {color:blue;} "
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "okay"
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 142,
+    "section": "HTML blocks",
+    "markdown": "<style\n  type=\"text/css\">\n\nfoo\n",
+    "expected": [
+      [
+        "STYLE",
+        [
+          [
+            "type",
+            "text/css"
+          ]
+        ],
+        [
+          " foo "
+        ]
+      ]
+    ],
+    "actual": [],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 145,
+    "section": "HTML blocks",
+    "markdown": "<style>p{color:red;}</style>\n*foo*\n",
+    "expected": [
+      [
+        "STYLE",
+        [],
+        [
+          "p{color:red;}"
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          [
+            "EM",
+            [],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "EM",
+            [],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 147,
+    "section": "HTML blocks",
+    "markdown": "<script>\nfoo\n</script>1. *bar*\n",
+    "expected": [
+      [
+        "SCRIPT",
+        [],
+        [
+          " foo "
+        ]
+      ],
+      "1. *bar* "
+    ],
+    "actual": [
+      "1. *bar* "
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 165,
+    "section": "Link reference definitions",
+    "markdown": "[foo]: /url '\ntitle\nline1\nline2\n'\n\n[foo]\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "/url"
+              ],
+              [
+                "title",
+                "\ntitle\nline1\nline2\n"
+              ]
+            ],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "/url"
+              ],
+              [
+                "title",
+                "title\nline1\nline2"
+              ]
+            ],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全清洗的属性归一化：链接 title 首尾空白由 DOMPurify 移除。"
+  },
+  {
+    "example": 170,
+    "section": "Link reference definitions",
+    "markdown": "[foo]: <bar>(baz)\n\n[foo]\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "[foo]: ",
+          [
+            "BAR",
+            [],
+            [
+              "(baz)"
+            ]
+          ]
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "[foo]"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "[foo]: (baz)"
+        ]
+      ],
+      [
+        "P",
+        [],
+        [
+          "[foo]"
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 398,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "__foo, __bar__, baz__\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo, bar, baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo, ",
+              [
+                "STRONG",
+                [],
+                [
+                  "bar"
+                ]
+              ],
+              ", baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 426,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "foo******bar*********baz\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "foo",
+          [
+            "STRONG",
+            [],
+            [
+              "bar"
+            ]
+          ],
+          "***baz"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "foo",
+          [
+            "STRONG",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  [
+                    "STRONG",
+                    [],
+                    [
+                      "bar"
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "***baz"
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 434,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "__foo __bar__ baz__\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo bar baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo ",
+              [
+                "STRONG",
+                [],
+                [
+                  "bar"
+                ]
+              ],
+              " baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 435,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "____foo__ bar__\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo bar"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  "foo"
+                ]
+              ],
+              " bar"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 436,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "**foo **bar****\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo bar"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo ",
+              [
+                "STRONG",
+                [],
+                [
+                  "bar"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 473,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "****foo****\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  "foo"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 474,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "____foo____\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  "foo"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 475,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "******foo******\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              "foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  [
+                    "STRONG",
+                    [],
+                    [
+                      "foo"
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 477,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "_____foo_____\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "EM",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  "foo"
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "EM",
+            [],
+            [
+              [
+                "STRONG",
+                [],
+                [
+                  [
+                    "STRONG",
+                    [],
+                    [
+                      "foo"
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "规范版本：沿用 CommonMark 0.31.2 的强调定界符规则，区别于 GFM 0.29 的旧规则。"
+  },
+  {
+    "example": 484,
+    "section": "Emphasis and strong emphasis",
+    "markdown": "*<img src=\"foo\" title=\"*\"/>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "*",
+          [
+            "IMG",
+            [
+              [
+                "src",
+                "foo"
+              ],
+              [
+                "title",
+                "*"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "*",
+          [
+            "IMG",
+            [
+              [
+                "alt",
+                ""
+              ],
+              [
+                "src",
+                "foo"
+              ],
+              [
+                "title",
+                "*"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "reason": "图片呈现：HTML 图片没有 alt 时补充空 alt 属性。"
+  },
+  {
+    "example": 500,
+    "section": "Links",
+    "markdown": "[link](<foo\nbar>)\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "[link](",
+          [
+            "FOO",
+            [
+              [
+                "bar",
+                ""
+              ]
+            ],
+            [
+              ")"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "[link]()"
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 532,
+    "section": "Links",
+    "markdown": "[foo <bar attr=\"](baz)\">\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "[foo ",
+          [
+            "BAR",
+            [
+              [
+                "attr",
+                "](baz)"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "[foo "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 544,
+    "section": "Links",
+    "markdown": "[foo <bar attr=\"][ref]\">\n\n[ref]: /uri\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "[foo ",
+          [
+            "BAR",
+            [
+              [
+                "attr",
+                "][ref]"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "[foo "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 604,
+    "section": "Autolinks",
+    "markdown": "<irc://foo.bar:2233/baz>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "irc://foo.bar:2233/baz"
+              ]
+            ],
+            [
+              "irc://foo.bar:2233/baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              "irc://foo.bar:2233/baz"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全过滤：DOMPurify 移除未允许协议的 href，保留链接文字。"
+  },
+  {
+    "example": 606,
+    "section": "Autolinks",
+    "markdown": "<a+b+c:d>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "a+b+c:d"
+              ]
+            ],
+            [
+              "a+b+c:d"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              "a+b+c:d"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全过滤：DOMPurify 移除未允许协议的 href，保留链接文字。"
+  },
+  {
+    "example": 607,
+    "section": "Autolinks",
+    "markdown": "<made-up-scheme://foo,bar>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "made-up-scheme://foo,bar"
+              ]
+            ],
+            [
+              "made-up-scheme://foo,bar"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              "made-up-scheme://foo,bar"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全过滤：DOMPurify 移除未允许协议的 href，保留链接文字。"
+  },
+  {
+    "example": 609,
+    "section": "Autolinks",
+    "markdown": "<localhost:5001/foo>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "localhost:5001/foo"
+              ]
+            ],
+            [
+              "localhost:5001/foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              "localhost:5001/foo"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全过滤：DOMPurify 移除未允许协议的 href，保留链接文字。"
+  },
+  {
+    "example": 616,
+    "section": "Autolinks",
+    "markdown": "< http://foo.bar >\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "< http://foo.bar >"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "< ",
+          [
+            "A",
+            [
+              [
+                "href",
+                "http://foo.bar"
+              ]
+            ],
+            [
+              "http://foo.bar"
+            ]
+          ],
+          " >"
+        ]
+      ]
+    ],
+    "reason": "主动扩展：对普通 URL 和邮箱启用 GFM 自动链接；此基础规范例的期望尚未启用扩展。"
+  },
+  {
+    "example": 619,
+    "section": "Autolinks",
+    "markdown": "http://example.com\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "http://example.com"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "http://example.com"
+              ]
+            ],
+            [
+              "http://example.com"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "主动扩展：对普通 URL 和邮箱启用 GFM 自动链接；此基础规范例的期望尚未启用扩展。"
+  },
+  {
+    "example": 620,
+    "section": "Autolinks",
+    "markdown": "foo@bar.example.com\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "foo@bar.example.com"
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "href",
+                "mailto:foo@bar.example.com"
+              ]
+            ],
+            [
+              "foo@bar.example.com"
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "主动扩展：对普通 URL 和邮箱启用 GFM 自动链接；此基础规范例的期望尚未启用扩展。"
+  },
+  {
+    "example": 632,
+    "section": "Raw HTML",
+    "markdown": "<a><bab><c2c>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              [
+                "BAB",
+                [],
+                [
+                  [
+                    "C2C",
+                    [],
+                    []
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            []
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 633,
+    "section": "Raw HTML",
+    "markdown": "<a/><b2/>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              [
+                "B2",
+                [],
+                []
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            []
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 634,
+    "section": "Raw HTML",
+    "markdown": "<a  /><b2\ndata=\"foo\" >\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            [
+              [
+                "B2",
+                [
+                  [
+                    "data",
+                    "foo"
+                  ]
+                ],
+                []
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            []
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 635,
+    "section": "Raw HTML",
+    "markdown": "<a foo=\"bar\" bam = 'baz <em>\"</em>'\n_boolean zoop:33=zoop:33 />\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [
+              [
+                "_boolean",
+                ""
+              ],
+              [
+                "bam",
+                "baz <em>\"</em>"
+              ],
+              [
+                "foo",
+                "bar"
+              ],
+              [
+                "zoop:33",
+                "zoop:33"
+              ]
+            ],
+            []
+          ]
+        ]
+      ],
+      [
+        "A",
+        [
+          [
+            "_boolean",
+            ""
+          ],
+          [
+            "bam",
+            "baz <em>\"</em>"
+          ],
+          [
+            "foo",
+            "bar"
+          ],
+          [
+            "zoop:33",
+            "zoop:33"
+          ]
+        ],
+        [
+          " "
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "A",
+            [],
+            []
+          ]
+        ]
+      ],
+      [
+        "A",
+        [],
+        [
+          " "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 636,
+    "section": "Raw HTML",
+    "markdown": "Foo <responsive-image src=\"foo.jpg\" />\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          "Foo ",
+          [
+            "RESPONSIVE-IMAGE",
+            [
+              [
+                "src",
+                "foo.jpg"
+              ]
+            ],
+            []
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          "Foo "
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  },
+  {
+    "example": 652,
+    "section": "Disallowed Raw HTML (extension)",
+    "markdown": "<strong> <title> <style> <em>\n\n<blockquote>\n  <xmp> is disallowed.  <XMP> is also disallowed.\n</blockquote>\n",
+    "expected": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              " <title> <style> ",
+              [
+                "EM",
+                [],
+                []
+              ]
+            ]
+          ]
+        ]
+      ],
+      [
+        "STRONG",
+        [],
+        [
+          [
+            "EM",
+            [],
+            [
+              " ",
+              [
+                "BLOCKQUOTE",
+                [],
+                [
+                  " <xmp> is disallowed. <XMP> is also disallowed. "
+                ]
+              ],
+              " "
+            ]
+          ]
+        ]
+      ]
+    ],
+    "actual": [
+      [
+        "P",
+        [],
+        [
+          [
+            "STRONG",
+            [],
+            [
+              " ",
+              [
+                "TITLE",
+                [],
+                [
+                  " <style> <em></p> <blockquote> <xmp> is disallowed. <XMP> is also disallowed. </blockquote> "
+                ]
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "reason": "安全清洗与 DOM 重解析：移除危险或未知 HTML 标签、非允许属性；损坏标签附近的空白可能归一化。"
+  }
+]
