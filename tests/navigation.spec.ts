@@ -6,10 +6,10 @@ test('mapped preview and diagnostics navigate using full YAML source lines',asyn
   await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy','false');
   await expect(page.locator('.pdf-content p').first()).toHaveAttribute('data-source-line','6');
   await page.locator('.pdf-content p').first().click();
-  expect(await editor.evaluate((area:HTMLTextAreaElement)=>area.value.slice(area.selectionStart,area.selectionEnd))).toContain('Paragraph **text**');
+  await expect.poll(() => editor.evaluate((area:HTMLTextAreaElement)=>area.value.slice(area.selectionStart,area.selectionEnd))).toContain('Paragraph **text**');
   await page.locator('.document-warnings summary').click();
   await page.getByRole('button',{name:/第 8 行：图片未找到/}).click();
-  expect(await editor.evaluate((area:HTMLTextAreaElement)=>area.value.slice(area.selectionStart,area.selectionEnd))).toBe('![missing](no.png)');
+  await expect.poll(() => editor.evaluate((area:HTMLTextAreaElement)=>area.value.slice(area.selectionStart,area.selectionEnd))).toBe('![missing](no.png)');
 });
 test('editor source navigation reaches a virtualized distant page',async({page})=>{
   await page.goto('/');
