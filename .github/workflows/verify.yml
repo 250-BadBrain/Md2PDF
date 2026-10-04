@@ -1,0 +1,55 @@
+name: Verify frontend
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browsers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright test --grep-invert "reviewed visual baselines"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-reports
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+  visual:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_CHANNEL: msedge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:visual -- --project chromium
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-reports
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

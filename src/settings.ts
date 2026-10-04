@@ -1,8 +1,10 @@
 import type { DocumentMeta } from './markdown';
 
-export type LayoutSettings = Required<Pick<DocumentMeta, 'cover' | 'theme' | 'footnotes' | 'softBreaks' | 'paper' | 'orientation' | 'margin' | 'fontFamily' | 'fontSize' | 'lineHeight' | 'header' | 'footer' | 'pageNumbers' | 'tocPageNumbers' | 'chapterNewPage' | 'chapterLevel'>>;
+export type LayoutSettings = Required<Pick<DocumentMeta, 'dialect' | 'minParagraphLines' | 'figureNumbers' | 'wideTables' | 'cover' | 'theme' | 'footnotes' | 'softBreaks' | 'paper' | 'orientation' | 'margin' | 'fontFamily' | 'fontSize' | 'lineHeight' | 'header' | 'footer' | 'pageNumbers' | 'tocPageNumbers' | 'chapterNewPage' | 'chapterLevel'>>;
 export const DEFAULT_LAYOUT: LayoutSettings = {
   cover: false, theme: 'classic', footnotes: 'end',
+  minParagraphLines: 1, figureNumbers: false, wideTables: false,
+  dialect: 'document',
   softBreaks: 'newline', paper: 'A4', orientation: 'portrait', margin: '16mm', fontFamily: 'sans', fontSize: 14, lineHeight: 1.72,
   header: '', footer: '', pageNumbers: false, tocPageNumbers: true, chapterNewPage: false, chapterLevel: 2,
 };
@@ -14,9 +16,12 @@ const clamp = (value: unknown, fallback: number, minimum: number, maximum: numbe
 export function normalizeSettings(value: unknown): LayoutSettings {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const result = { ...DEFAULT_LAYOUT };
+  if(input.dialect==='commonmark'||input.dialect==='gfm'||input.dialect==='obsidian')result.dialect=input.dialect;
   if (input.cover === true) result.cover = true;
   if (input.theme === 'book' || input.theme === 'compact') result.theme = input.theme;
-  if (input.footnotes === 'near-reference') result.footnotes = input.footnotes;
+  if (input.footnotes === 'near-reference' || input.footnotes === 'page-bottom') result.footnotes = input.footnotes;
+  result.minParagraphLines = Math.round(clamp(input.minParagraphLines,1,1,4));
+  result.figureNumbers = input.figureNumbers === true; result.wideTables = input.wideTables === true;
   if (input.softBreaks === 'space') result.softBreaks = 'space';
   if (['A4', 'A5', 'Letter'].includes(String(input.paper))) result.paper = input.paper as LayoutSettings['paper'];
   if (input.orientation === 'landscape') result.orientation = 'landscape';

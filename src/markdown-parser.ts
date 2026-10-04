@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it';
 import { gfmAutolinks } from './gfm-autolinks';
+import { wikiLinks } from './wiki-links';
 
 
 import markdownItAttrs from 'markdown-it-attrs';
@@ -35,9 +36,13 @@ import yaml from 'highlight.js/lib/languages/yaml';
 import { parse as parseYaml } from 'yaml';
 
 export type DocumentMeta = {
+  dialect?: 'document' | 'commonmark' | 'gfm' | 'obsidian';
   cover?: boolean;
   theme?: 'classic' | 'book' | 'compact';
-  footnotes?: 'end' | 'near-reference';
+  footnotes?: 'end' | 'near-reference' | 'page-bottom';
+  minParagraphLines?: number;
+  figureNumbers?: boolean;
+  wideTables?: boolean;
   softBreaks?: 'newline' | 'space';
   paper?: 'A4' | 'A5' | 'Letter';
   orientation?: 'portrait' | 'landscape';
@@ -155,9 +160,13 @@ export function parseFrontMatter(markdownSource: string): { body: string; meta: 
   }
 
   const meta: DocumentMeta = {
+    dialect: ['document','commonmark','gfm','obsidian'].includes(String(parsed.dialect)) ? parsed.dialect as DocumentMeta['dialect'] : undefined,
     cover: toBooleanMetaValue(parsed.cover),
     theme: ['classic', 'book', 'compact'].includes(String(parsed.theme)) ? parsed.theme as DocumentMeta['theme'] : undefined,
-    footnotes: ['end', 'near-reference'].includes(String(parsed.footnotes)) ? parsed.footnotes as DocumentMeta['footnotes'] : undefined,
+    footnotes: ['end', 'near-reference', 'page-bottom'].includes(String(parsed.footnotes)) ? parsed.footnotes as DocumentMeta['footnotes'] : undefined,
+    minParagraphLines: toNumberMetaValue(parsed.minParagraphLines) === undefined ? undefined : Math.min(4, Math.max(1, Math.round(Number(parsed.minParagraphLines)))),
+    figureNumbers: toBooleanMetaValue(parsed.figureNumbers),
+    wideTables: toBooleanMetaValue(parsed.wideTables),
     softBreaks: ['newline', 'space'].includes(String(parsed.softBreaks)) ? parsed.softBreaks as DocumentMeta['softBreaks'] : undefined,
     paper: ['A4', 'A5', 'Letter'].includes(String(parsed.paper)) ? parsed.paper as DocumentMeta['paper'] : undefined,
     orientation: ['portrait', 'landscape'].includes(String(parsed.orientation)) ? parsed.orientation as DocumentMeta['orientation'] : undefined,
@@ -206,8 +215,8 @@ function headingText(children: { type: string; content: string }[]) {
   ).map((child) => child.content).join('').trim();
 }
 
-function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: string) => string) {
-  const instance = new MarkdownIt({
+function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: string) => string, dialect: NonNullable<DocumentMeta['dialect']> = 'document') {
+  const instance = new MarkdownIt(dialect === 'commonmark' ? 'commonmark' : 'default', {
     html: true,
     linkify: false,
     breaks: softBreaks === 'newline',
@@ -224,8 +233,10 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
 
       return escapeHtml(code);
     },
-  })
-    .use(gfmAutolinks)
+  });
+  if (dialect === 'commonmark') return instance;
+  if (dialect === 'gfm') return instance.use(gfmAutolinks).use(markdownItTaskLists, {enabled:false,label:false});
+  instance.use(gfmAutolinks)
     .use(markdownItAttrs, { allowedAttributes: ['id', 'class', 'width', 'height'] })
     .use(markdownItAbbr)
     .use(markdownItDeflist)
@@ -340,6 +351,7 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
       : self.renderToken(tokens, index, options);
   };
 
+  if (dialect === 'obsidian') instance.use(wikiLinks);
   return instance;
 }
 
@@ -347,25 +359,26 @@ export function containsMathSyntax(markdownSource: string) {
   return /\$|\\\(|\\\[|(?:`{3,}|~{3,})\s*math\b/.test(markdownSource);
 }
 
-async function getMarkdown(markdownSource: string, softBreaks: 'newline' | 'space') {
-  if (!containsMathSyntax(markdownSource)) {
-    if (!baseMarkdown.has(softBreaks)) baseMarkdown.set(softBreaks, createMarkdown(softBreaks));
-    return baseMarkdown.get(softBreaks)!;
+async function getMarkdown(markdownSource: string, softBreaks: 'newline' | 'space', dialect: NonNullable<DocumentMeta['dialect']>) {
+  const key=`${dialect}:${softBreaks}`;
+  if (dialect === 'commonmark' || dialect === 'gfm' || !containsMathSyntax(markdownSource)) {
+    if (!baseMarkdown.has(key)) baseMarkdown.set(key, createMarkdown(softBreaks,undefined,dialect));
+    return baseMarkdown.get(key)!;
   }
-  if (!mathMarkdownPromises.has(softBreaks)) mathMarkdownPromises.set(softBreaks, Promise.all([
+  if (!mathMarkdownPromises.has(key)) mathMarkdownPromises.set(key, Promise.all([
     import('markdown-it-texmath'), import('katex'),
   ]).then(([texmathModule, katexModule]) => {
     const render = (source: string, options: Record<string, unknown> = {}) => {
       try { return katexModule.default.renderToString(source, { ...options, trust: false, strict: 'ignore', throwOnError: true }); }
       catch (error) { return `<span class="katex-error" title="${escapeHtml(error instanceof Error ? error.message : String(error))}">${escapeHtml(source)}</span>`; }
     };
-    return createMarkdown(softBreaks, (source) => render(source, { displayMode: true })).use(texmathModule.default, {
+    return createMarkdown(softBreaks, (source) => render(source, { displayMode: true }),dialect).use(texmathModule.default, {
       engine: { renderToString: render },
       delimiters: ['dollars', 'brackets', 'gitlab'],
       katexOptions: { trust: false, strict: 'ignore', throwOnError: false },
     });
   }));
-  return mathMarkdownPromises.get(softBreaks)!;
+  return mathMarkdownPromises.get(key)!;
 }
 export async function parseMarkdownSyntax(
   markdownSource: string,
@@ -374,8 +387,26 @@ export async function parseMarkdownSyntax(
   preferences: DocumentMeta = {},
 ) : Promise<RenderedDocument> {
   const { body, meta } = parseFrontMatter(markdownSource);
-  const renderer = await getMarkdown(body, meta.softBreaks ?? preferences.softBreaks ?? 'newline');
-  const html = renderer.render(body, { path: markdownPath, assets });
+  const dialect=meta.dialect ?? preferences.dialect ?? 'document';
+  const renderer = await getMarkdown(body, dialect==='commonmark'||dialect==='gfm'?'space':meta.softBreaks ?? preferences.softBreaks ?? 'newline',dialect);
+  const normalized = markdownSource.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const offset = normalized.slice(0, normalized.length - body.length).split('\n').length - 1;
+  const env = { path: markdownPath, assets };
+  const tokens = renderer.parse(body, env);
+  const originalRules = renderer.renderer.rules;
+  const rules = { ...originalRules };
+  const mappingSafe = !/<(?:title|textarea|xmp|script|style|plaintext)\b/i.test(body);
+  for (const type of new Set(tokens.filter((token) => mappingSafe && token.block && token.map && token.nesting >= 0 && !['inline','html_block'].includes(token.type)).map((token) => token.type))) {
+    rules[type] = (items, index, options, environment, self) => {
+      const token = items[index];
+      const result = originalRules[type] ? originalRules[type]!(items, index, options, environment, self) : self.renderToken(items, index, options);
+      if (!token.map) return result;
+      return result.replace(/^(\s*<[a-z][\w-]*)(?=[\s>])/i, `$1 data-source-line="${token.map[0] + offset + 1}" data-source-end="${token.map[1] + offset}"`);
+    };
+  }
+  const output = Object.create(renderer.renderer) as typeof renderer.renderer;
+  output.rules = rules;
+  const html = output.render(tokens, renderer.options, env);
 
   return { html, meta };
 }

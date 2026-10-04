@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { replaceText } from './draft';
+import { editorLinePositions, lineOffset, sourceLocation, type SourceLocation } from './source-map';
 
 export function Editor({ source, change, disabled, panel, download, clear, draftStatus }: {
   source: string; change: (value: string) => void; disabled: boolean; panel: HTMLElement | null;
@@ -9,13 +10,37 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
   const [find, setFind] = useState(''); const [replacement, setReplacement] = useState('');
   const [sync, setSync] = useState(false); const [showFind, setShowFind] = useState(false);
   const syncing = useRef(false);
+  const positions = useRef<number[]>([]);
+  const ensurePositions=useRef<()=>void>(()=>{});
+  useEffect(() => {
+    const area = editor.current; if (!area) return;
+    let dirty=true;
+    const update=()=>{if(dirty){positions.current=editorLinePositions(area,source);dirty=false;}};
+    ensurePositions.current=update;
+    const observer = new ResizeObserver(()=>{dirty=true;}); observer.observe(area);
+    const timer=sync?setTimeout(update,250):undefined;
+    const navigate = (event: Event) => {
+      const {line,end} = (event as CustomEvent<SourceLocation>).detail;
+      update();
+      area.focus(); area.setSelectionRange(lineOffset(source,line), lineOffset(source,end + 1));
+      area.scrollTop = Math.max(0,(positions.current[line - 1] || 0) - area.clientHeight / 3);
+    };
+    window.addEventListener('source-navigation',navigate);
+    return () => { clearTimeout(timer); observer.disconnect(); window.removeEventListener('source-navigation',navigate); };
+  },[source,sync]);
   useEffect(() => {
     if (!panel || !sync) return;
     let timer: ReturnType<typeof setTimeout>;
     const update = () => {
       const area = editor.current; if (!area || syncing.current) return;
+      ensurePositions.current();
       syncing.current = true;
-      area.scrollTop = panel.scrollTop / Math.max(1, panel.scrollHeight - panel.clientHeight) * (area.scrollHeight - area.clientHeight);
+      const top = panel.getBoundingClientRect().top;
+      const blocks = Array.from(panel.querySelectorAll<HTMLElement>('[data-source-line]'));
+      const visible = blocks.filter((block) => block.getBoundingClientRect().bottom > top && block.getBoundingClientRect().top < top + panel.clientHeight)
+        .sort((a,b) => Math.abs(a.getBoundingClientRect().top-top) - Math.abs(b.getBoundingClientRect().top-top))[0];
+      const location = sourceLocation(visible);
+      area.scrollTop = location ? Math.max(0,(positions.current[location.line-1] || 0)-20) : panel.scrollTop / Math.max(1, panel.scrollHeight-panel.clientHeight) * (area.scrollHeight-area.clientHeight);
       timer = setTimeout(() => { syncing.current = false; }, 50);
     };
     panel.addEventListener('scroll', update);
@@ -49,9 +74,12 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
       }} onScroll={() => {
         const area = editor.current;
         if (sync && area && panel && !syncing.current) {
+          ensurePositions.current();
           syncing.current = true;
-          panel.scrollTop = area.scrollTop / Math.max(1, area.scrollHeight - area.clientHeight) * (panel.scrollHeight - panel.clientHeight);
-          setTimeout(() => { syncing.current = false; }, 50);
+          let line = positions.current.findIndex((top) => top >= area.scrollTop);
+          if (line < 0) line = positions.current.length - 1;
+          window.dispatchEvent(new CustomEvent('preview-navigation',{detail: Math.max(1,line+1)}));
+          setTimeout(() => { syncing.current = false; }, 100);
         }
       }} />
   </section>;

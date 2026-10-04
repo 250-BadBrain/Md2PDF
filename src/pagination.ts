@@ -1,15 +1,21 @@
 import { escapeHtml, type DocumentMeta } from './markdown';
 import { layoutVariables } from './settings';
+import { attachPageNotes, commitPageNotes, extractPageNotes, reservePageNotes, type NoteContext } from './page-notes';
+import { numberDocumentFigures } from './document-structure';
 
-type PageState = { page: HTMLElement; content: HTMLElement; meta: DocumentMeta; host?: HTMLElement; signal?: AbortSignal };
+type PageState = { page: HTMLElement; content: HTMLElement; meta: DocumentMeta; host?: HTMLElement; signal?: AbortSignal; notes?: NoteContext };
 
+let lastYield = 0;
 async function yieldLayout(signal?: AbortSignal) {
   signal?.throwIfAborted();
+  if (performance.now() - lastYield < 8) return;
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  lastYield = performance.now();
   signal?.throwIfAborted();
 }
 
 function isOverflowing(content: HTMLElement) {
+  reservePageNotes(content);
   return content.scrollHeight > content.clientHeight + 1;
 }
 
@@ -58,7 +64,7 @@ export async function waitForImages(element: HTMLElement, signal?: AbortSignal) 
   );
 }
 
-function createPage(meta: DocumentMeta = {}, className = 'pdf-page', host?: HTMLElement, signal?: AbortSignal) {
+function createPage(meta: DocumentMeta = {}, className = 'pdf-page', host?: HTMLElement, signal?: AbortSignal, notes?: NoteContext) {
   const page = document.createElement('article');
   page.className = className;
   for (const [name, value] of Object.entries(layoutVariables(meta))) page.style.setProperty(name, value);
@@ -76,6 +82,9 @@ function createPage(meta: DocumentMeta = {}, className = 'pdf-page', host?: HTML
 
   const content = document.createElement('div');
   content.className = 'pdf-content markdown-body';
+  content.dataset.pageWidth = String(parseFloat(layoutVariables(meta)['--pdf-page-width']));
+  content.dataset.pageHeight = String(parseFloat(layoutVariables(meta)['--pdf-page-height']));
+  content.dataset.minParagraphLines = String(meta.minParagraphLines || 1);
   page.appendChild(content);
 
   if (meta.footer || meta.pageNumbers) {
@@ -121,13 +130,15 @@ function createPage(meta: DocumentMeta = {}, className = 'pdf-page', host?: HTML
       if (needed > parseFloat(padding.paddingBottom)) content.style.paddingBottom = `${needed}px`;
     }
   }
-  return { page, content, meta, host, signal };
+  if (notes && host) attachPageNotes(page,content,notes);
+  return { page, content, meta, host, signal, notes };
 }
 
 function appendPage(
   pages: string[],
   state: PageState,
 ) {
+  commitPageNotes(state.content);
   pages.push(state.page.innerHTML);
   state.page.remove();
 }
@@ -244,28 +255,47 @@ function fitWideMath(node: HTMLElement) {
 // Split DOM ranges rather than plain strings so emphasis, links and highlighted code survive.
 function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HTMLElement) => boolean) {
   if (node.matches('svg, figure, .mermaid-diagram, .katex-display, table, h1, h2, h3, h4, h5, h6')) return null;
-  const positions: { node: Text; offset: number }[] = [];
+  // Keep one segment per text node instead of one JS object per character.
+  const segments: { node: Text; start: number; count: number; offsets?: Uint32Array }[] = [];
+  let positionCount = 0;
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
   let textNode: Node | null;
   while ((textNode = walker.nextNode())) {
     if (textNode.parentElement?.closest('svg, .katex, .mermaid-diagram')) continue;
-    let offset = 0;
-    for (const character of Array.from(textNode.textContent ?? '')) {
-      offset += character.length;
-      positions.push({ node: textNode as Text, offset });
+    const text = textNode as Text;
+    let count = text.length; let offsets: Uint32Array | undefined;
+    if (/[\uD800-\uDFFF]/.test(text.data)) {
+      offsets = new Uint32Array(text.length); count = 0; let offset = 0;
+      for (const character of text.data) { offset += character.length; offsets[count++] = offset; }
     }
+    if (count) { segments.push({ node: text, start: positionCount, count, offsets }); positionCount += count; }
   }
-  if (positions.length < 2) return null;
+  if (positionCount < 2) return null;
+  const positionAt = (index: number) => {
+    let low = 0, high = segments.length - 1;
+    while (low < high) { const middle = (low + high) >> 1; if (segments[middle].start + segments[middle].count <= index) low = middle + 1; else high = middle; }
+    const segment = segments[low]; const local = index - segment.start;
+    return { node: segment.node, offset: segment.offsets ? segment.offsets[local] : local + 1 };
+  };
   const makeHead = (index: number) => {
     const range = document.createRange();
     range.setStart(node, 0);
-    range.setEnd(positions[index].node, positions[index].offset);
+    const position = positionAt(index); range.setEnd(position.node, position.offset);
     const head = node.cloneNode(false) as HTMLElement;
     head.appendChild(range.cloneContents());
     return head;
   };
+  const minLines = node.tagName === 'P' && !testFit ? Number(content.dataset.minParagraphLines || 1) : 1;
+  const lines = (element: HTMLElement) => {
+    const range = document.createRange(); range.selectNodeContents(element);
+    return new Set(Array.from(range.getClientRects(),rect=>Math.round(rect.top))).size;
+  };
+  const tailAt = (index: number) => {
+    const position=positionAt(index);const range=document.createRange();range.setStart(position.node,position.offset);range.setEnd(node,node.childNodes.length);
+    const tail=node.cloneNode(false) as HTMLElement;tail.append(range.cloneContents());return tail;
+  };
   let low = 0;
-  let high = positions.length - 2;
+  let high = positionCount - 2;
   let best = -1;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
@@ -276,6 +306,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
       content.appendChild(head);
       fits = !isOverflowing(content);
       head.remove();
+      if (fits && minLines > 1) { const tail=tailAt(middle);content.append(tail);fits=lines(tail)>=minLines;tail.remove(); }
     }
     if (fits) { best = middle; low = middle + 1; }
     else high = middle - 1;
@@ -284,12 +315,13 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
   // Prefer a nearby line or word boundary without leaving a nearly empty page.
   const minimum = Math.max(0, best - 120);
   for (let index = best; index >= minimum; index--) {
-    const { node: text, offset } = positions[index];
+    const { node: text, offset } = positionAt(index);
     if (/\s/.test(text.data[offset - 1])) { best = index; break; }
   }
   const head = makeHead(best);
+  if(minLines>1){content.append(head);const enough=lines(head)>=minLines;head.remove();if(!enough)return null;}
   const range = document.createRange();
-  range.setStart(positions[best].node, positions[best].offset);
+  const position = positionAt(best); range.setStart(position.node, position.offset);
   range.setEnd(node, node.childNodes.length);
   const tail = node.cloneNode(false) as HTMLElement;
   tail.appendChild(range.cloneContents());
@@ -299,7 +331,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
     if (usedIds.has(element.id)) element.removeAttribute('id');
   });
   const path: HTMLElement[] = [];
-  let ancestor = positions[best].node.parentElement;
+  let ancestor = position.node.parentElement;
   while (ancestor) {
     path.unshift(ancestor);
     if (ancestor === node) break;
@@ -341,7 +373,7 @@ function startNewPageIfNeeded(pages: string[], state: PageState) {
   if (state.content.children.length === 0) return state;
 
   appendPage(pages, state);
-  const nextState = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal);
+  const nextState = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
   return nextState;
 }
 
@@ -385,9 +417,9 @@ async function appendTableToPages(
   state.content.appendChild(tableState.table);
   let tableScaled = false;
 
-  for (const row of rows) {
+  for (const [rowIndex, row] of rows.entries()) {
     state.signal?.throwIfAborted();
-    if (rows.indexOf(row) % 12 === 0) await yieldLayout(state.signal);
+    if (rowIndex % 12 === 0) await yieldLayout(state.signal);
     if (tableScaled) {
       state = startNewPageIfNeeded(pages, state);
       tableState = createTableShell(table);
@@ -405,7 +437,7 @@ async function appendTableToPages(
       tableState.table.remove();
       appendPage(pages, state);
 
-      state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal);
+      state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
       table.parentElement?.parentElement?.appendChild(state.page);
       tableState = createTableShell(table);
       state.content.appendChild(tableState.table);
@@ -431,7 +463,7 @@ async function appendTableToPages(
     rowClone.remove();
     appendPage(pages, state);
 
-    state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal);
+    state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
     table.parentElement?.parentElement?.appendChild(state.page);
     tableState = createTableShell(table);
     state.content.appendChild(tableState.table);
@@ -476,7 +508,7 @@ async function appendMergedTable(table: HTMLTableElement, pages: string[], state
     clones.forEach((row) => shell.tbody.appendChild(row));
     if (isOverflowing(state.content)) {
       shell.table.remove(); fitAtomicNode(shell.table, state.content);
-      appendPage(pages, state); state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal);
+      appendPage(pages, state); state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
       shell = createTableShell(table); state.content.appendChild(shell.table);
     }
   }
@@ -549,6 +581,8 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
   for (const [name, value] of Object.entries(layoutVariables(meta))) source.style.setProperty(name, value);
   host.style.width = layoutVariables(meta)['--pdf-page-width'];
   source.innerHTML = html;
+  if (meta.figureNumbers) numberDocumentFigures(source);
+  let notes: NoteContext | undefined;
   if (meta.footnotes === 'near-reference') {
     const definitions = new Map(Array.from(source.querySelectorAll<HTMLElement>('.footnotes li[id]'), (note, index) => [note.id, { note, index }]));
     for (const block of Array.from(source.children)) {
@@ -623,9 +657,10 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
     await new Promise((resolve) => requestAnimationFrame(resolve));
     await waitForImages(source, signal);
     await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (meta.footnotes === 'page-bottom') notes = extractPageNotes(source);
 
     const pages: string[] = [];
-    let state: PageState = createPage(meta, 'pdf-page pdf-page-measure', host, signal);
+    let state: PageState = createPage(meta, 'pdf-page pdf-page-measure', host, signal, notes);
     host.appendChild(state.page);
 
     for (const node of Array.from(source.children)) {
@@ -636,13 +671,22 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
         state = startNewPageIfNeeded(pages, state);
         state = await appendNodeToPages(node, pages, state);
       } else if (node instanceof HTMLTableElement) {
-        state = await appendTableToPages(node, pages, state);
+        const contentWidth=state.content.clientWidth-parseFloat(getComputedStyle(state.content).paddingLeft)-parseFloat(getComputedStyle(state.content).paddingRight);
+        const tableWidth=node.getBoundingClientRect().width;
+        if(meta.wideTables && meta.orientation!=='landscape' && (node.scrollWidth>contentWidth+1 || tableWidth>contentWidth+1 || node.querySelectorAll('thead tr:first-child th').length>=8)) {
+          state=startNewPageIfNeeded(pages,state);
+          state.page.remove();
+          state=createPage({...meta,orientation:'landscape'},'pdf-page pdf-page-measure',host,signal,notes);
+          state=await appendTableToPages(node,pages,state);appendPage(pages,state);
+          state=createPage(meta,'pdf-page pdf-page-measure',host,signal,notes);
+        } else state = await appendTableToPages(node, pages, state);
       } else {
         state = await appendNodeToPages(node, pages, state);
       }
     }
 
-    if (state.content.children.length > 0 || pages.length === 0) appendPage(pages, state);
+    if (state.content.children.length > 0 || pages.length === 0 || notes?.pending.length) appendPage(pages, state);
+    while(notes?.pending.length){await yieldLayout(signal);state=createPage(meta,'pdf-page pdf-page-measure',host,signal,notes);appendPage(pages,state);}
     const nextPages = pages.length > 0 ? pages : [createPage(meta).page.innerHTML];
     return finalizePages(nextPages, meta);
   } finally {

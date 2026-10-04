@@ -7,8 +7,13 @@ export function LayoutSettings({ value, change, close, saved }: { value: Prefere
     <p>配置自动保存；文档中的 YAML 设置优先。</p>
     {!saved ? <p role="status">浏览器无法保存配置，本次设置仍然有效。</p> : null}
     <div className="settings-grid">
+      <label>Markdown 模式<select aria-label="Markdown 模式" value={value.dialect} onChange={e=>update('dialect',e.target.value)}><option value="document">文档扩展（默认）</option><option value="commonmark">CommonMark</option><option value="gfm">GFM</option><option value="obsidian">Obsidian 常用扩展</option></select></label>
+      {value.dialect==='commonmark'||value.dialect==='gfm'?<p>此模式使用标准软换行；不解析数学、Mermaid 或文档扩展。HTML 仍经过安全过滤。</p>:null}
       <label>主题<select aria-label="主题" value={value.theme} onChange={(e) => update('theme', e.target.value)}><option value="classic">经典</option><option value="book">书籍</option><option value="compact">紧凑</option></select></label>
-      <label>脚注<select aria-label="脚注位置" value={value.footnotes} onChange={(e) => update('footnotes', e.target.value)}><option value="end">文末</option><option value="near-reference">靠近首次引用</option></select></label>
+      <label>脚注<select aria-label="脚注位置" value={value.footnotes} onChange={(e) => update('footnotes', e.target.value)}><option value="end">文末</option><option value="near-reference">靠近首次引用</option><option value="page-bottom">页底（长注续页）</option></select></label>
+      <label>段落分页最少行数<input aria-label="段落分页最少行数" type="number" min={1} max={4} value={value.minParagraphLines} onChange={e=>update('minParagraphLines',Number(e.target.value))}/></label>
+      <label><input type="checkbox" checked={value.figureNumbers} onChange={e=>update('figureNumbers',e.target.checked)}/>图与图表编号</label>
+      <label><input type="checkbox" checked={value.wideTables} onChange={e=>update('wideTables',e.target.checked)}/>宽表格使用横向页面</label>
       <label><input type="checkbox" checked={value.cover} onChange={(e) => update('cover', e.target.checked)} />添加封面</label>
       <label className="settings-wide">软换行<select aria-label="软换行" value={value.softBreaks} onChange={(e) => update('softBreaks', e.target.value)}>
         <option value="newline">普通换行：单次回车显示为换行</option>

@@ -19,7 +19,7 @@ npm run build
 
 默认“可搜索 PDF（打印保存）”打开浏览器打印对话框。选择“另存为 PDF”，关闭浏览器自带页眉页脚，使用文档纸张尺寸；正文可复制和搜索，图表保持矢量输出。最终结果由当前浏览器的打印引擎决定，建议使用 Chrome 或 Edge。
 
-“图像 PDF”使用 html2canvas + jsPDF，可直接下载，但正文不可搜索。批量 ZIP 固定使用图像 PDF，保留目录与重名处理；批量可搜索 PDF 需逐个文档打印保存。两种方式均导出完整文档，预览窗口化不影响页数。
+“图像 PDF”使用 html2canvas + jsPDF，可直接下载，但正文不可搜索。可选择小体积、均衡、高清三档。批量 ZIP 固定使用图像 PDF，保留目录与重名处理；每卷最多 10 个文件或约 32MiB PDF，超出后自动分卷下载。单个大 PDF 仍可能超过分卷阈值，浏览器可能需要允许多文件下载；取消不会撤回已经下载的分卷。批量可搜索 PDF 需逐个文档打印保存。两种方式均导出完整文档，预览窗口化不影响页数。
 
 本地检查构建后的静态页面：
 
@@ -41,6 +41,8 @@ npm run test:visual -- --update-snapshots
 ```
 
 首次迁移到其他操作系统也应生成并检查相应平台的基线。
+
+GitHub Actions 在推送 `main` 或提交 PR 时执行单元测试、构建和 Linux 三浏览器检查（包含离线专项）；Windows Edge 单独检查已有分页截图。失败时保留 trace、截图和 HTML 报告。配置见 `.github/workflows/verify.yml`；本地写入配置不代表远程 CI 已运行。
 
 Windows 已安装 Edge 时，也可在 PowerShell 中运行：
 
@@ -64,7 +66,9 @@ npm run test:browser
 | 提示容器 | `::: note/tip/info/warning/danger/success 可选标题`，以 `:::` 结束 |
 | 手动分页 | 独立行 `[pagebreak]`、`{pagebreak}`、`<!-- pagebreak -->`；代码块中的同名文本不会分页 |
 
-默认普通单行换行会显示为换行，保留原项目的编辑习惯；可在“排版 → 软换行”选择标准软换行，或在 YAML 指定 `softBreaks: space`。此选项只改变换行，不代表完整 CommonMark 模式。Markdown 方言不完全一致，本项目不执行 MDX/JSX，也不提供 Pandoc 的完整语法或任意 LaTeX 环境。
+默认文档扩展模式保留原项目的语法与换行习惯。“排版 → Markdown 模式”新增 CommonMark、GFM、Obsidian 常用扩展；也可在 YAML 指定 `dialect`。CommonMark/GFM 固定使用标准软换行并关闭数学、Mermaid 和文档扩展。文档/Obsidian 模式可独立设置 `softBreaks: space`。所有模式仍清洗 HTML，不宣称输出与标准或 GitHub 网站完全相同。本项目不执行 MDX/JSX，也不提供 Pandoc 的完整语法或任意 LaTeX 环境。
+
+Obsidian 模式支持当前文档 `[[#标题|别名]]`、段落结尾 `^block-id` 与 `[[#^block-id]]`，以及本地图片 `![[picture.svg|说明]]`。跨文档双链和笔记嵌入会提示目标未找到或不支持，不会自动读取其他笔记。
 
 完整官方例集已纳入离线测试，共检查 1,324 个例子；已知差异逐例登记，不宣称全量兼容。支持清单、差异原因和验证方法见 [Markdown 兼容性说明](docs/markdown-compatibility.md)，可运行 `npm run test:compatibility`。
 
@@ -74,7 +78,9 @@ npm run test:browser
 
 图片还可以使用 `![说明|240x120](a.png)` 或 `![说明|width=50%](a.png)`。单独一行的图片会展示说明文字。找不到本地资源或图片加载失败时显示提示；远程图片需要其服务器允许跨域访问才能正常导出。
 
-本地草稿自动保存正文和文件名，刷新后恢复；图片需要重新上传。编辑工具提供查找替换、Markdown 下载和可选同步滚动。清除草稿保留当前编辑内容。
+本地文本草稿自动保存正文和文件名。“项目库”可保存多个包含本地图片与排版设置的项目；保存项目后，编辑自动更新该项目，刷新时恢复图片。每个项目保留最近五个不同版本，支持还原历史、删除、导入/导出 ZIP 项目包。正文上限 2Mi 字符，项目上限 100MiB、200 张图片，实际可保存容量受浏览器配额限制。仅文本草稿仍不保存图片；清除草稿不删除项目库中的项目。
+
+编辑工具提供查找替换、Markdown 下载和可选同步滚动。同步滚动依据源码块的行号定位，并考虑编辑区自动折行；点击预览正文可选中对应源码块，诊断提示可跳转到源代码。超长块跨页仍映射到原始块范围；原始 HTML 与包含 HTML 原始文本标签的文档可能没有映射。
 
 上传 `examples` 文件夹可查看 [完整语法示例](examples/syntax.md) 和本地图片。
 
@@ -102,6 +108,11 @@ fontFamily: sans
 fontSize: 14
 lineHeight: 1.72
 softBreaks: space
+dialect: document
+footnotes: page-bottom
+minParagraphLines: 2
+figureNumbers: true
+wideTables: true
 ---
 ```
 
@@ -109,6 +120,6 @@ softBreaks: space
 
 长段落、代码和列表保留内联格式跨页拆分，嵌套有序列表编号连续；提示块内的手动分页也生效。表格按行分页并重复表头，超长普通表格行拆分单元格内容，避免整体缩小字号。含 rowspan 的表格按相连行组分页；超高行组及无法拆分的图形保持结构，必要时缩小；宽公式也会缩小适应页面。
 
-“排版”还可选择主题、封面与靠近首次引用的脚注。生产版支持离线缓存，首次需联网等待缓存完成；只缓存静态应用资源。更多说明及限制见 [后续纯前端改进](docs/frontend-improvements.md)。
+“排版”还可选择主题、封面与脚注位置。页底脚注会预留正文空间，长注续页；极大不可拆内容仍可能缩小。段落分页最少行数可设为 1–4，默认 1 保留原行为；不足以分割的不可拆块仍使用安全回退。开启图与图表编号后可使用 `[@ref](#figure-1)`、`[@ref](#diagram-1)` 或显式图片 ID 交叉引用。宽表格可独占横向页面，并在预览与两种 PDF 输出中保留混合尺寸。生产版支持离线缓存，首次需联网等待缓存完成；只缓存静态应用资源。更多说明及限制见 [后续纯前端改进](docs/frontend-improvements.md) 和 [本轮六项改进](docs/quality-and-document-workflows.md)。
 
 预览会显示更新状态，只挂载当前视口附近的页面，并支持跳转页码和目录锚点。相同文档及设置的结果通过有限缓存复用，修改文档时取消过期分页。选择“图像 PDF”仍使用 html2canvas + jsPDF，该兼容模式的正文不能选中或搜索。检查记录见 [第一轮修复](docs/project-review.md) 和 [五项改进记录](docs/product-improvements.md)。

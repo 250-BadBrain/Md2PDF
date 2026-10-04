@@ -59,7 +59,7 @@ export function canonicalHtml(html: string) {
       return pre ? text : text.replace(/\s+/g, ' ');
     }
     if (!(node instanceof Element)) return null;
-    const attrs = [...node.attributes].filter((attribute) => !(attribute.name === 'style' && ['TH', 'TD'].includes(node.tagName)))
+    const attrs = [...node.attributes].filter((attribute) => !attribute.name.startsWith('data-source-') && !(attribute.name === 'style' && ['TH', 'TD'].includes(node.tagName)))
       .map((attribute) => attribute.name === 'class'
         ? ['class', attribute.value.split(' ').filter((value) => !['contains-task-list', 'task-list-item', 'task-list-item-checkbox'].includes(value)).join(' ')]
         : [attribute.name, attribute.value])

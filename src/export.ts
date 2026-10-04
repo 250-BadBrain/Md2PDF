@@ -1,6 +1,8 @@
 import { waitForImages } from './pagination';
 import type { DocumentMeta } from './markdown';
 import { pageDimensions } from './settings';
+import { QUALITY, type ExportQuality } from './export-settings';
+import { pageSize } from './page-size';
 
 function createPdfDocument(pages: string[], meta: DocumentMeta) {
   const host = document.createElement('div');
@@ -8,11 +10,11 @@ function createPdfDocument(pages: string[], meta: DocumentMeta) {
 
   const documentElement = document.createElement('section');
   documentElement.className = 'pdf-document pdf-document-export';
-  const { width, height } = pageDimensions(meta);
-  documentElement.style.height = `${pages.length * height}mm`;
-  documentElement.style.width = `${width}mm`;
+  documentElement.style.height = `${pages.reduce((total,html)=>total+pageSize(html,meta).height,0)}mm`;
+  documentElement.style.width = `${Math.max(...pages.map(html=>pageSize(html,meta).width))}mm`;
 
   for (const pageHtml of pages) {
+    const {width,height}=pageSize(pageHtml,meta);
     const page = document.createElement('article');
     page.className = 'pdf-page pdf-page-export';
     page.style.width = `${width}mm`;
@@ -26,7 +28,7 @@ function createPdfDocument(pages: string[], meta: DocumentMeta) {
   return documentElement;
 }
 
-export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
+export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { quality?: ExportQuality; signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
   let element: HTMLElement | undefined;
 
   try {
@@ -35,10 +37,11 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
     ]);
     await document.fonts?.ready;
 
+    const firstSize=pageSize(pages[0] || '',meta);
     const pdf = new jsPDF({
       unit: 'mm',
-      format: [pageDimensions(meta).width, pageDimensions(meta).height],
-      orientation: pageDimensions(meta).width > pageDimensions(meta).height ? 'landscape' : 'portrait',
+      format: [firstSize.width, firstSize.height],
+      orientation: firstSize.width > firstSize.height ? 'landscape' : 'portrait',
       compress: true,
     });
     const destinations = new Map<string, { pageNumber: number; top: number }>();
@@ -52,7 +55,7 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       page.querySelectorAll<HTMLElement>('[id]').forEach((target) => {
         if (!destinations.has(target.id)) destinations.set(target.id, {
           pageNumber: index + 1,
-          top: (target.getBoundingClientRect().top - bounds.top) * pageDimensions(meta).height / bounds.height,
+          top: (target.getBoundingClientRect().top - bounds.top) * pageSize(html,meta).height / bounds.height,
         });
       });
       element.parentElement?.remove(); element = undefined;
@@ -64,19 +67,19 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       const pageElement = element.querySelector<HTMLElement>('.pdf-page')!;
       await waitForImages(pageElement, options.signal);
       const canvas = await html2canvas(pageElement, {
-        scale: 2,
+        scale: QUALITY[options.quality || 'high'].scale,
         useCORS: true,
         backgroundColor: '#ffffff',
       });
-      const imageData = canvas.toDataURL('image/jpeg', 0.98);
+      const imageData = canvas.toDataURL('image/jpeg', QUALITY[options.quality || 'high'].jpeg);
       canvas.width = 0; canvas.height = 0;
       options.signal?.throwIfAborted();
 
+      const { width, height } = pageSize(html,meta);
       if (index > 0) {
-        pdf.addPage([pageDimensions(meta).width, pageDimensions(meta).height]);
+        pdf.addPage([width,height], width>height?'landscape':'portrait');
       }
 
-      const { width, height } = pageDimensions(meta);
       pdf.addImage(imageData, 'JPEG', 0, 0, width, height);
       const bounds = pageElement.getBoundingClientRect();
       pageElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
@@ -119,7 +122,10 @@ async function dataUrl(url: string) {
 
 async function printHtml(pages: string[], meta: DocumentMeta) {
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = pages.map((html) => `<article class="pdf-page">${html}</article>`).join('');
+  wrapper.innerHTML = pages.map((html,index) => {
+    const {width,height}=pageSize(html,meta);
+    return `<article class="pdf-page" style="page:sheet${index};width:${width}mm;height:${height}mm">${html}</article>`;
+  }).join('');
   await Promise.all(Array.from(wrapper.querySelectorAll('img'), async (img) => {
     try { img.src = await dataUrl(img.src); }
     catch { throw new Error(`图片无法导出：${img.alt || img.src}，请使用本地图片或允许跨域的地址。`); }
@@ -139,7 +145,8 @@ async function printHtml(pages: string[], meta: DocumentMeta) {
     return css;
   }));
   const { width, height } = pageDimensions(meta);
-  const printStyle = `@page {size:${width}mm ${height}mm;margin:0} html,body{margin:0;padding:0;height:auto;background:white} *{-webkit-print-color-adjust:exact;print-color-adjust:exact} .pdf-page{display:block;width:${width}mm;height:${height}mm;margin:0;box-shadow:none;transform:none;break-after:page;break-inside:avoid}.pdf-page:last-child{break-after:auto}.header-anchor{visibility:hidden}.pdf-content{overflow:hidden}`;
+  const namedPages=pages.map((html,index)=>{const size=pageSize(html,meta);return `@page sheet${index}{size:${size.width}mm ${size.height}mm;margin:0}`;}).join('');
+  const printStyle = `@page {size:${width}mm ${height}mm;margin:0} ${namedPages} html,body{margin:0;padding:0;height:auto;background:white} *{-webkit-print-color-adjust:exact;print-color-adjust:exact} .pdf-page{display:block;width:${width}mm;height:${height}mm;margin:0;box-shadow:none;transform:none;break-after:page;break-inside:avoid}.pdf-page:last-child{break-after:auto}.header-anchor{visibility:hidden}.pdf-content{overflow:hidden}`;
   const title = (meta.title || 'Md2PDF').replace(/[<>&"]/g, '');
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>${styles.join('\n').replace(/<\/style/gi, '<\\/style')}\n${printStyle}</style></head><body>${wrapper.innerHTML}</body></html>`;
 }

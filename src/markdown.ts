@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { parseWithWorker } from './parser-client';
-import { escapeHtml, containsMathSyntax, humanizeContainerType, parseMarkdownSyntax, type DocumentMeta, type RenderedDocument } from './markdown-parser';
+import { escapeHtml, humanizeContainerType, parseMarkdownSyntax, type DocumentMeta, type RenderedDocument } from './markdown-parser';
 export { escapeHtml, parseFrontMatter, parseMarkdownSyntax } from './markdown-parser';
 export type { DocumentMeta, RenderedDocument } from './markdown-parser';
 type AssetUrls = Record<string, string>;
@@ -188,6 +188,7 @@ function enhanceImages(container: HTMLElement, path: string | undefined, assets:
 
     const figure = document.createElement('figure');
     figure.className = 'image-figure';
+    for (const key of ['sourceLine', 'sourceEnd'] as const) if (parent.dataset[key]) figure.dataset[key] = parent.dataset[key];
     parent.replaceWith(figure);
     figure.appendChild(img);
 
@@ -199,7 +200,7 @@ function enhanceImages(container: HTMLElement, path: string | undefined, assets:
   });
 }
 
-async function enhanceRenderedHtml(html: string, path: string | undefined, assets: AssetUrls) {
+async function enhanceRenderedHtml(html: string, path: string | undefined, assets: AssetUrls, dialect: DocumentMeta['dialect']) {
   const container = document.createElement('div');
   container.innerHTML = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form'],
@@ -226,7 +227,20 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
       }
     }
   });
-  enhanceAlerts(container);
+  if(dialect!=='commonmark'&&dialect!=='gfm')enhanceAlerts(container);
+  container.querySelectorAll<HTMLAnchorElement>('.wiki-link[data-wiki-target]').forEach(link=>{
+    const target=link.dataset.wikiTarget || '';const [note,...parts]=target.split('#');const fragment=parts.join('#');
+    const current=(path||'').split('/').pop()?.replace(/\.(md|markdown)$/i,'').toLowerCase();
+    let destination:HTMLElement|null=null;
+    if(!note||note.replace(/\.(md|markdown)$/i,'').toLowerCase()===current){
+      if(!fragment)destination=container.querySelector<HTMLElement>('[id]');
+      else if(fragment.startsWith('^'))destination=Array.from(container.querySelectorAll<HTMLElement>('[id]')).find(element=>element.id==='block-'+fragment.slice(1))||null;
+      else destination=Array.from(container.querySelectorAll<HTMLElement>('[id]')).find(element=>element.id===fragment)||Array.from(container.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')).find(heading=>heading.textContent?.replace(/\s*#$/,'').trim()===fragment)||null;
+    }
+    if(destination){link.href=`#${encodeURIComponent(destination.id)}`;}
+    else {link.removeAttribute('href');link.classList.add('unresolved-reference');link.textContent=`引用目标未找到：${target}`;}
+    delete link.dataset.wikiTarget;
+  });
   enhanceImages(container, path, assets);
   const diagrams = Array.from(container.querySelectorAll<HTMLElement>('.mermaid-diagram'));
 
@@ -262,9 +276,9 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
 
 export async function renderMarkdownToHtml(markdownSource: string, markdownPath: string | undefined, assets: AssetUrls,
   preferences: DocumentMeta = {}, signal?: AbortSignal): Promise<RenderedDocument> {
-  if (containsMathSyntax(markdownSource)) await import('katex/dist/katex.min.css');
   const parsed = await parseWithWorker({ source: markdownSource, path: markdownPath, assets, preferences },
     () => parseMarkdownSyntax(markdownSource, markdownPath, assets, preferences), signal);
   signal?.throwIfAborted();
-  return { meta: parsed.meta, html: await enhanceRenderedHtml(parsed.html, markdownPath, assets) };
+  if (/<span class="katex(?: |")/.test(parsed.html)) await import('katex/dist/katex.min.css');
+  return { meta: parsed.meta, html: await enhanceRenderedHtml(parsed.html, markdownPath, assets, parsed.meta.dialect || preferences.dialect) };
 }
