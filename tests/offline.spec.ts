@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 let server: ChildProcess;
 test.beforeAll(async () => {
-  server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', '4174', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--config', 'tests/fixtures/offline.config.mjs', '--host', '127.0.0.1', '--port', '4174', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Production preview did not start')), 15000);
     server.stdout!.on('data', (chunk) => { if (String(chunk).includes('4174')) { clearTimeout(timeout); resolve(); } });

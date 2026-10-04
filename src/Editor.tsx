@@ -19,14 +19,19 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
     ensurePositions.current=update;
     const observer = new ResizeObserver(()=>{dirty=true;}); observer.observe(area);
     const timer=sync?setTimeout(update,250):undefined;
+    let navigationFrame = 0;
     const navigate = (event: Event) => {
       const {line,end} = (event as CustomEvent<SourceLocation>).detail;
-      update();
-      area.focus(); area.setSelectionRange(lineOffset(source,line), lineOffset(source,end + 1));
-      area.scrollTop = Math.max(0,(positions.current[line - 1] || 0) - area.clientHeight / 3);
+      cancelAnimationFrame(navigationFrame);
+      // Allow the mobile editor pane to become visible before measuring and focusing.
+      navigationFrame = requestAnimationFrame(() => {
+        dirty = true; update();
+        area.focus(); area.setSelectionRange(lineOffset(source,line), lineOffset(source,end + 1));
+        area.scrollTop = Math.max(0,(positions.current[line - 1] || 0) - area.clientHeight / 3);
+      });
     };
     window.addEventListener('source-navigation',navigate);
-    return () => { clearTimeout(timer); observer.disconnect(); window.removeEventListener('source-navigation',navigate); };
+    return () => { clearTimeout(timer); cancelAnimationFrame(navigationFrame); observer.disconnect(); window.removeEventListener('source-navigation',navigate); };
   },[source,sync]);
   useEffect(() => {
     if (!panel || !sync) return;

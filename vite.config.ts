@@ -8,7 +8,9 @@ export default defineConfig({
   plugins: [react(), {
     name: 'offline-static-assets',
     generateBundle: { order: 'post', handler(_options, bundle) {
-      const files = ['index.html', 'manifest.webmanifest', 'icon.svg', ...Object.keys(bundle).filter((file) => file.startsWith('assets/') && !file.endsWith('.map'))];
+      // Cache the canonical document URL: Cloudflare redirects /index.html to /,
+      // and browsers reject redirected cached responses for offline navigation.
+      const files = ['./', 'manifest.webmanifest', 'icon.svg', ...Object.keys(bundle).filter((file) => file.startsWith('assets/') && !file.endsWith('.map'))];
       const hash = createHash('sha256').update(JSON.stringify(files));
       for (const item of Object.values(bundle)) hash.update(item.type === 'chunk' ? item.code : item.source);
       for (const file of ['manifest.webmanifest', 'icon.svg']) hash.update(readFileSync(new URL(`./public/${file}`, import.meta.url)));
@@ -22,7 +24,7 @@ self.addEventListener('fetch',event=>{
  const request=event.request; if(request.method!=='GET')return;
  const url=new URL(request.url); if(url.origin!==self.location.origin||!url.href.startsWith(self.registration.scope))return;
  if(FILES.includes(url.href))event.respondWith(caches.open(NAME).then(cache=>cache.match(request,{ignoreVary:true})).then(cached=>cached||fetch(request)));
- else if(request.mode==='navigate')event.respondWith(fetch(request).catch(()=>caches.open(NAME).then(cache=>cache.match(new URL('index.html',self.registration.scope)))));
+ else if(request.mode==='navigate')event.respondWith(fetch(request).catch(()=>caches.open(NAME).then(cache=>cache.match(new URL('./',self.registration.scope),{ignoreVary:true}))));
 });` });
     } },
   }],

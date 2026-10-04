@@ -127,6 +127,7 @@ test('small screens provide editor and preview tabs, keyboard source navigation 
     const article = page.locator('.pdf-page').first(); await article.focus(); await page.keyboard.press('Enter');
     if (width === 390) await expect(page.getByRole('button', { name: '编辑', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('textbox', { name:'Markdown 源代码编辑区' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name:'Markdown 源代码编辑区' })).toBeFocused();
     await page.screenshot({path:`tmp/mobile-${width}.png`});
   }
 });
