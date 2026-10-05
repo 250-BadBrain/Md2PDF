@@ -1,8 +1,8 @@
 export function numberDocumentFigures(source: HTMLElement) {
   let image=0,diagram=0;
   const used=new Set([...source.querySelectorAll('[id]')].map(element=>element.id));
-  for(const figure of source.querySelectorAll<HTMLElement>('figure.image-figure,.mermaid-diagram:not(.mermaid-error)')) {
-    const isDiagram=figure.classList.contains('mermaid-diagram');const number=isDiagram?++diagram:++image;
+  for(const figure of source.querySelectorAll<HTMLElement>('figure.image-figure,.mermaid-diagram:not(.mermaid-error),.diagram-block:not(.diagram-error)')) {
+    const isDiagram=figure.matches('.mermaid-diagram,.diagram-block');const number=isDiagram?++diagram:++image;
     const label=`${isDiagram?'图表':'图'} ${number}`;
     if(!figure.id){
       const img=figure.querySelector('img[id]');

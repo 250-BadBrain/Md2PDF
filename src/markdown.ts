@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { parseWithWorker } from './parser-client';
-import { escapeHtml, humanizeContainerType, parseMarkdownSyntax, type DocumentMeta, type RenderedDocument } from './markdown-parser';
+import { escapeHtml, parseMarkdownSyntax, type DocumentMeta, type RenderedDocument } from './markdown-parser';
+import { enhanceDoocsHtml, preserveImageDimensions } from './doocs-html';
 export { escapeHtml, parseFrontMatter, parseMarkdownSyntax } from './markdown-parser';
 export type { DocumentMeta, RenderedDocument } from './markdown-parser';
 type AssetUrls = Record<string, string>;
@@ -105,37 +106,12 @@ function cleanupMermaidErrors() {
     .forEach((element) => element.closest('svg')?.remove());
 }
 
-function enhanceAlerts(container: HTMLElement) {
-  container.querySelectorAll('blockquote').forEach((blockquote) => {
-    const firstParagraph = blockquote.querySelector(':scope > p');
-    const firstNode = firstParagraph?.firstChild;
-    const text = firstNode?.nodeType === Node.TEXT_NODE ? firstNode.textContent ?? '' : '';
-    const match = text.match(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)]\s*/i);
-
-    if (!match || !firstParagraph) return;
-
-    const type = match[1].toLowerCase();
-    const label = humanizeContainerType(type === 'caution' ? 'danger' : type);
-    firstNode!.textContent = text.slice(match[0].length);
-    while (firstParagraph.firstChild && (
-      (firstParagraph.firstChild.nodeType === Node.TEXT_NODE && !firstParagraph.firstChild.textContent?.trim())
-      || (firstParagraph.firstChild instanceof HTMLElement && firstParagraph.firstChild.tagName === 'BR')
-    )) firstParagraph.firstChild.remove();
-    blockquote.classList.add('md-alert', `md-alert-${type}`);
-    blockquote.insertAdjacentHTML('afterbegin', `<strong>${label}</strong>`);
-
-    if (!firstParagraph.textContent?.trim()) {
-      firstParagraph.remove();
-    }
-  });
-}
-
 function parseImagePresentation(img: HTMLImageElement) {
   const rawAlt = img.alt;
   const [caption, ...markers] = rawAlt.split('|').map((part) => part.trim());
   for (const attribute of ['width', 'height'] as const) {
     const value = img.getAttribute(attribute);
-    if (value && /^\d+$/.test(value)) img.style[attribute] = `${value}px`;
+    if (!img.style[attribute] && value && /^\d+$/.test(value)) img.style[attribute] = `${value}px`;
   }
 
   for (const marker of markers) {
@@ -200,7 +176,7 @@ function enhanceImages(container: HTMLElement, path: string | undefined, assets:
   });
 }
 
-async function enhanceRenderedHtml(html: string, path: string | undefined, assets: AssetUrls, dialect: DocumentMeta['dialect']) {
+async function enhanceRenderedHtml(html: string, path: string | undefined, assets: AssetUrls, dialect: DocumentMeta['dialect'], signal?: AbortSignal) {
   const container = document.createElement('div');
   container.innerHTML = DOMPurify.sanitize(html, {
     FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form'],
@@ -212,6 +188,10 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
   container.querySelectorAll<HTMLElement>('[style]').forEach((element) => {
     if (!element.closest('.katex')) {
       const alignment = element.style.textAlign;
+      if (element.tagName === 'IMG') {
+        preserveImageDimensions(element);
+        return;
+      }
       element.removeAttribute('style');
       if (/^(TH|TD)$/.test(element.tagName) && /^(left|center|right)$/.test(alignment)) {
         element.style.textAlign = alignment;
@@ -227,7 +207,7 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
       }
     }
   });
-  if(dialect!=='commonmark'&&dialect!=='gfm')enhanceAlerts(container);
+  if(dialect!=='commonmark'&&dialect!=='gfm')enhanceDoocsHtml(container);
   container.querySelectorAll<HTMLAnchorElement>('.wiki-link[data-wiki-target]').forEach(link=>{
     const target=link.dataset.wikiTarget || '';const [note,...parts]=target.split('#');const fragment=parts.join('#');
     const current=(path||'').split('/').pop()?.replace(/\.(md|markdown)$/i,'').toLowerCase();
@@ -242,13 +222,16 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
     delete link.dataset.wikiTarget;
   });
   enhanceImages(container, path, assets);
-  const diagrams = Array.from(container.querySelectorAll<HTMLElement>('.mermaid-diagram'));
+  const diagrams = Array.from(container.querySelectorAll<HTMLElement>('.mermaid-diagram,.diagram-block'));
 
   for (const diagram of diagrams) {
+    signal?.throwIfAborted();
+    const type = diagram.classList.contains('plantuml-diagram') ? 'plantuml'
+      : diagram.classList.contains('infographic-diagram') ? 'infographic' : 'mermaid';
     let source = '';
 
     try {
-      source = decodeURIComponent(diagram.dataset.mermaid ?? '').trim();
+      source = decodeURIComponent(diagram.dataset[type] ?? '').trim();
     } catch {
       source = '';
     }
@@ -259,15 +242,33 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
     }
 
     try {
-      const id = `mermaid-${Date.now()}-${mermaidId++}`;
-      const mermaid = await getMermaid();
-      const { svg } = await mermaid.render(id, source);
-      diagram.innerHTML = svg;
+      if (type === 'plantuml') {
+        const { renderPlantuml } = await import('./plantuml');
+        signal?.throwIfAborted();
+        diagram.innerHTML = await renderPlantuml(source, signal);
+      } else if (type === 'infographic') {
+        const { renderInfographic } = await import('./infographic');
+        signal?.throwIfAborted();
+        // Adapter validates data/resources and returns a static, cleaned SVG.
+        // Its measured text uses foreignObject, which an SVG-only profile drops.
+        diagram.innerHTML = await renderInfographic(source);
+      } else {
+        const id = `mermaid-${Date.now()}-${mermaidId++}`;
+        const mermaid = await getMermaid();
+        signal?.throwIfAborted();
+        const { svg } = await mermaid.render(id, source);
+        diagram.innerHTML = svg;
+      }
+      signal?.throwIfAborted();
+      delete diagram.dataset[type];
     } catch (error) {
+      signal?.throwIfAborted();
       cleanupMermaidErrors();
       diagram.innerHTML = `<pre><code>${escapeHtml(source)}</code></pre>`;
-      diagram.classList.add('mermaid-error');
-      console.error('Mermaid render failed', error);
+      diagram.classList.add(type === 'mermaid' ? 'mermaid-error' : 'diagram-error');
+      diagram.dataset.diagramError = `${type === 'infographic' ? 'Infographic' : type === 'plantuml' ? 'PlantUML' : 'Mermaid'}：${error instanceof Error ? error.message : String(error)}`;
+      delete diagram.dataset[type];
+      console.error(`${type} render failed`, error);
     }
   }
 
@@ -280,5 +281,5 @@ export async function renderMarkdownToHtml(markdownSource: string, markdownPath:
     () => parseMarkdownSyntax(markdownSource, markdownPath, assets, preferences), signal);
   signal?.throwIfAborted();
   if (/<span class="katex(?: |")/.test(parsed.html)) await import('katex/dist/katex.min.css');
-  return { meta: parsed.meta, html: await enhanceRenderedHtml(parsed.html, markdownPath, assets, parsed.meta.dialect || preferences.dialect) };
+  return { meta: parsed.meta, html: await enhanceRenderedHtml(parsed.html, markdownPath, assets, parsed.meta.dialect || preferences.dialect, signal) };
 }

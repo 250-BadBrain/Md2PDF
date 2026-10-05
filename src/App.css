@@ -178,7 +178,7 @@ textarea {
 .pdf-page-notes ol { margin: 0; padding-left: 24px; }
 .pdf-page-notes p { margin: 0; }
 .pdf-page-notes[hidden] { display: none; }
-.mermaid-diagram figcaption { margin-top: 6px; font-size: 12px; color: #666; }
+.mermaid-diagram figcaption, .diagram-block figcaption { margin-top: 6px; font-size: 12px; color: #666; }
 .unresolved-reference { color: #aa2929; }
 
 .project-library { padding: 16px 24px; background: #fafaf7; border-bottom: 1px solid #ddd; max-height: 45vh; overflow: auto; }
@@ -764,7 +764,8 @@ textarea {
   page-break-inside: avoid;
 }
 
-.markdown-body .mermaid-diagram {
+.markdown-body .mermaid-diagram,
+.markdown-body .diagram-block {
   max-width: 100%;
   margin: 1em auto;
   overflow-x: auto;
@@ -773,14 +774,21 @@ textarea {
   page-break-inside: avoid;
 }
 
-.markdown-body .mermaid-diagram svg {
+.markdown-body .mermaid-diagram svg,
+.markdown-body .diagram-block svg {
   max-width: 100%;
   height: auto;
 }
 
-.markdown-body .mermaid-error {
+.markdown-body .mermaid-error,
+.markdown-body .diagram-error {
   text-align: left;
 }
+
+.markdown-body .md-center { text-align: center; }
+.markdown-body .md-wavy { text-decoration: underline wavy; text-underline-offset: 0.2em; }
+.markdown-body ruby { ruby-position: over; }
+.markdown-body ruby rt { font-size: 0.6em; }
 
 .markdown-body .katex {
   font-size: 1.05em;

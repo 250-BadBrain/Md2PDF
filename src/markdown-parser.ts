@@ -1,12 +1,12 @@
 import MarkdownIt from 'markdown-it';
 import { gfmAutolinks } from './gfm-autolinks';
 import { wikiLinks } from './wiki-links';
+import { doocsExtensions } from './doocs-extensions';
 
 
 import markdownItAttrs from 'markdown-it-attrs';
 import markdownItAbbr from 'markdown-it-abbr';
 import markdownItAnchor from 'markdown-it-anchor';
-import markdownItContainer from 'markdown-it-container';
 import markdownItDeflist from 'markdown-it-deflist';
 import { full as markdownItEmoji } from 'markdown-it-emoji';
 import markdownItFootnote from 'markdown-it-footnote';
@@ -66,7 +66,6 @@ export type RenderedDocument = {
 };
 type AssetUrls = Record<string, string>;
 
-const CONTAINER_TYPES = ['note', 'tip', 'info', 'warning', 'danger', 'success'];
 const baseMarkdown = new Map<string, MarkdownIt>();
 const mathMarkdownPromises = new Map<string, Promise<MarkdownIt>>();
 
@@ -211,7 +210,7 @@ export function humanizeContainerType(type: string) {
 
 function headingText(children: { type: string; content: string }[]) {
   return children.filter((child) =>
-    ['text', 'code_inline', 'image', 'emoji', 'math_inline'].includes(child.type),
+    ['text', 'code_inline', 'image', 'emoji', 'math_inline', 'doocs_ruby', 'doocs_wavy'].includes(child.type),
   ).map((child) => child.content).join('').trim();
 }
 
@@ -245,12 +244,7 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
     .use(markdownItMark)
     .use(markdownItSub)
     .use(markdownItSup)
-    .use(markdownItContainer, 'note')
-    .use(markdownItContainer, 'tip')
-    .use(markdownItContainer, 'info')
-    .use(markdownItContainer, 'warning')
-    .use(markdownItContainer, 'danger')
-    .use(markdownItContainer, 'success')
+    .use(doocsExtensions)
     .use(markdownItTaskLists, {
       enabled: false,
       label: false,
@@ -321,16 +315,6 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
     return true;
   }, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
   instance.renderer.rules.page_break = () => '<div class="page-break"></div>\n';
-  for (const type of CONTAINER_TYPES) {
-    const marker = `container_${type}`;
-    instance.renderer.rules[`${marker}_open`] = (tokens, index) => {
-      const title = tokens[index].info.trim().slice(type.length).trim() || humanizeContainerType(type);
-      return `<section class="md-container md-container-${type}"><strong>${escapeHtml(
-        title,
-      )}</strong>\n`;
-    };
-    instance.renderer.rules[`${marker}_close`] = () => '</section>\n';
-  }
   const defaultFenceRule = instance.renderer.rules.fence;
 
   instance.renderer.rules.fence = (tokens, index, options, env, self) => {
@@ -341,6 +325,10 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
       return `<div class="mermaid-diagram" data-mermaid="${encodeURIComponent(
         token.content,
       )}"></div>`;
+    }
+    if (language === 'plantuml' || language === 'puml' || language === 'infographic') {
+      const type = language === 'puml' ? 'plantuml' : language;
+      return `<div class="diagram-block ${type}-diagram" data-${type}="${encodeURIComponent(token.content)}"></div>`;
     }
     if (language === 'math' && renderMath) {
       return `<div class="math-block">${renderMath(token.content)}</div>`;

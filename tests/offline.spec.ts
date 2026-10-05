@@ -19,12 +19,16 @@ test('production app caches all modules and renders and exports offline', async 
   await context.setOffline(true); await page.reload();
   try { await expect(page.getByRole('textbox', { name: 'Markdown 源代码编辑区' })).toBeVisible(); }
   catch (error) { console.log(failures); throw error; }
-  await page.getByRole('textbox', { name: 'Markdown 源代码编辑区' }).fill('# Offline\n\n$x^2$\n\n```mermaid\nflowchart LR\nA --> B\n```');
+  await page.getByRole('textbox', { name: 'Markdown 源代码编辑区' }).fill('# Offline\n\n$x^2$\n\n```mermaid\nflowchart LR\nA --> B\n```\n\n```plantuml\n@startuml\nAlice -> Bob : Offline\n@enduml\n```\n\n```infographic\ninfographic list-row-horizontal-icon-arrow\ndata\n  items\n    - label Offline\n      icon mdi/rocket-launch\n```');
   await expect(page.locator('.mermaid-diagram svg')).toHaveCount(1);
   await expect(page.locator('.katex')).toHaveCount(1);
+  await expect(page.locator('.plantuml-diagram svg')).toHaveCount(1);
+  await expect(page.locator('.infographic-diagram svg')).toHaveCount(1);
+  await expect(page.locator('.diagram-error')).toHaveCount(0);
   await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy', 'false');
   await page.getByLabel('PDF 导出方式').selectOption('image');
   const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: '下载', exact: true }).click();
   expect((await downloading).suggestedFilename()).toMatch(/\.pdf$/);
+  expect(failures).toEqual([]);
   await context.setOffline(false);
 });

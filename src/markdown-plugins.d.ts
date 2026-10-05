@@ -5,13 +5,6 @@ declare module 'markdown-it-abbr' {
   export default plugin;
 }
 
-declare module 'markdown-it-container' {
-  import type MarkdownIt from 'markdown-it';
-
-  const plugin: MarkdownIt.PluginWithOptions<string>;
-  export default plugin;
-}
-
 declare module 'markdown-it-deflist' {
   import type MarkdownIt from 'markdown-it';
 

@@ -254,14 +254,23 @@ function fitWideMath(node: HTMLElement) {
 
 // Split DOM ranges rather than plain strings so emphasis, links and highlighted code survive.
 function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HTMLElement) => boolean) {
-  if (node.matches('svg, figure, .mermaid-diagram, .katex-display, table, h1, h2, h3, h4, h5, h6')) return null;
+  if (node.matches('svg, figure, .mermaid-diagram, .diagram-block, .katex-display, table, h1, h2, h3, h4, h5, h6')) return null;
   // Keep one segment per text node instead of one JS object per character.
-  const segments: { node: Text; start: number; count: number; offsets?: Uint32Array }[] = [];
+  const segments: { node: Text; start: number; count: number; offsets?: Uint32Array; ruby?: HTMLElement }[] = [];
+  const rubies = new Set<HTMLElement>();
   let positionCount = 0;
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
   let textNode: Node | null;
   while ((textNode = walker.nextNode())) {
-    if (textNode.parentElement?.closest('svg, .katex, .mermaid-diagram')) continue;
+    if (textNode.parentElement?.closest('svg, .katex, .mermaid-diagram, .diagram-block')) continue;
+    const ruby = textNode.parentElement?.closest<HTMLElement>('ruby');
+    if (ruby) {
+      if (!rubies.has(ruby)) {
+        rubies.add(ruby);
+        segments.push({ node: textNode as Text, start: positionCount++, count: 1, ruby });
+      }
+      continue;
+    }
     const text = textNode as Text;
     let count = text.length; let offsets: Uint32Array | undefined;
     if (/[\uD800-\uDFFF]/.test(text.data)) {
@@ -275,6 +284,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
     let low = 0, high = segments.length - 1;
     while (low < high) { const middle = (low + high) >> 1; if (segments[middle].start + segments[middle].count <= index) low = middle + 1; else high = middle; }
     const segment = segments[low]; const local = index - segment.start;
+    if (segment.ruby) return { node: segment.ruby.parentNode!, offset: Array.from(segment.ruby.parentNode!.childNodes).indexOf(segment.ruby) + 1 };
     return { node: segment.node, offset: segment.offsets ? segment.offsets[local] : local + 1 };
   };
   const makeHead = (index: number) => {
@@ -316,7 +326,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
   const minimum = Math.max(0, best - 120);
   for (let index = best; index >= minimum; index--) {
     const { node: text, offset } = positionAt(index);
-    if (/\s/.test(text.data[offset - 1])) { best = index; break; }
+    if (text.nodeType === Node.TEXT_NODE && /\s/.test((text as Text).data[offset - 1])) { best = index; break; }
   }
   const head = makeHead(best);
   if(minLines>1){content.append(head);const enough=lines(head)>=minLines;head.remove();if(!enough)return null;}
@@ -331,7 +341,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
     if (usedIds.has(element.id)) element.removeAttribute('id');
   });
   const path: HTMLElement[] = [];
-  let ancestor = position.node.parentElement;
+  let ancestor = position.node.nodeType === Node.TEXT_NODE ? position.node.parentElement : position.node as HTMLElement;
   while (ancestor) {
     path.unshift(ancestor);
     if (ancestor === node) break;

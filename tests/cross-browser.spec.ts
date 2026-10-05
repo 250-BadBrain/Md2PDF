@@ -2,6 +2,32 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import { extractPdfText } from './pdf-text';
 
+test('Doocs extensions and local diagram engines render without external requests', async ({page}) => {
+  const external: string[] = [];
+  page.on('request', request => {
+    if (/^https?:/.test(request.url()) && !request.url().startsWith('http://127.0.0.1:4173')) external.push(request.url());
+  });
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const {renderMarkdownToHtml} = await import('/src/markdown.ts');
+    const source = '[你好]{nǐ hǎo} ~波浪线~\n\n::: theorem 勾股定理\n$a^2+b^2=c^2$\n:::\n\n> [!IMPORTANT] 上线前必读\n> 正文\n\n```plantuml\n@startuml\nactor 读者\n读者 -> 工具 : 导出\n@enduml\n```\n\n```infographic\ninfographic list-row-horizontal-icon-arrow\ndata\n  title 客户增长引擎\n  items\n    - label 口碑传播\n      icon mdi/rocket-launch\n    - label 团队合作\n      icon mdi/account-group\n```';
+    const output = await renderMarkdownToHtml(source, undefined, {});
+    const host = document.createElement('div'); host.innerHTML = output.html;
+    return {
+      ruby: host.querySelector('ruby rt')?.textContent,
+      wave: host.querySelector('.md-wavy')?.textContent,
+      title: host.querySelector('.md-alert-important > strong')?.textContent,
+      plantuml: host.querySelector('.plantuml-diagram svg')?.textContent,
+      infographic: host.querySelector('.infographic-diagram svg')?.textContent,
+      errors: host.querySelectorAll('.diagram-error,.katex-error').length,
+      hosts: document.querySelectorAll('[data-infographic-host]').length,
+    };
+  });
+  expect(result).toMatchObject({ruby:'nǐ hǎo',wave:'波浪线',title:'上线前必读',errors:0,hosts:0});
+  expect(result.plantuml).toContain('导出'); expect(result.infographic).toContain('客户增长引擎');
+  expect(result.infographic).toContain('口碑传播'); expect(external).toEqual([]);
+});
+
 test('local fonts produce searchable Chinese text across browser engines', async ({page})=>{
   await page.goto('/'); const bytes=[...await fs.readFile('tests/fixtures/fonts/test.ttf')];
   const result=await page.evaluate(async bytes=>{

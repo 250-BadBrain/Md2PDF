@@ -9,6 +9,12 @@ const render = async (source: string, assets: Record<string, string> = {}) => {
 };
 
 describe('Markdown syntax and regressions', () => {
+  it('preserves bounded HTML image styles ahead of width attributes', async () => {
+    const doc = await render('<center><img src="pic.png" width="80" style="width:100px;position:fixed;top:0"></center>', {'book/docs/pic.png':'blob:picture'});
+    expect(doc.querySelector('img')?.style.width).toBe('100px');
+    expect(doc.querySelector('img')?.style.position).toBe('');
+    expect(doc.querySelector('.md-center')).not.toBeNull();
+  });
   it('keeps missing inline images inside paragraphs and image links', async () => {
     const doc = await render('Before [![missing](missing.png)](/target) after');
     expect(doc.querySelectorAll('p')).toHaveLength(1);

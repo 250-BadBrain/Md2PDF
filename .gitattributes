@@ -1,4 +1,5 @@
 * text=auto
 tests/fixtures/spec/*.json text eol=lf
 tests/fixtures/spec/*.txt text eol=lf
+tests/fixtures/doocs/* text eol=lf
 *.png binary
