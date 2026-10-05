@@ -112,6 +112,17 @@ describe('Markdown syntax and regressions', () => {
     expect(doc.querySelector('.katex')).toBeNull();
   });
 
+  it('freezes automatic formula numbering per document and leaves manual tags intact', async () => {
+    const source = '\\begin{equation}a=b\\end{equation}\n\n\\begin{align}x&=y\\\\z&=w\\end{align}\n\n$$q=r\\tag{Custom}$$';
+    for(let repeat=0;repeat<2;repeat++) {
+      const doc = await render(source);
+      expect([...doc.querySelectorAll('.eqn-num')].map(tag=>tag.textContent)).toEqual(['(1)','(2)','(3)']);
+      expect([...doc.querySelectorAll('.eqn-num')].map(tag=>(tag as HTMLElement).dataset.equationNumber)).toEqual(['1','2','3']);
+      expect(doc.textContent).toContain('Custom');
+      expect(doc.querySelectorAll('.katex-error')).toHaveLength(0);
+    }
+  });
+
   it('supports embedded HTML and removes executable content and hostile styles', async () => {
     const doc = await render('<details open><summary>More</summary><kbd>Ctrl</kbd></details>\n\n<script>alert(1)</script><img src="https://example.com/a.png" onerror="alert(1)"><a href="javascript:alert(1)">bad</a><div style="position:fixed">text</div>');
     expect(doc.querySelector('details summary')?.textContent).toBe('More');

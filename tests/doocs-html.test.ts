@@ -2,11 +2,13 @@ import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { describe, expect, it } from 'vitest';
 import { enhanceDoocsHtml, preserveImageDimensions } from '../src/doocs-html';
+import type { DocumentMeta } from '../src/markdown';
+import katex from 'katex';
 
-function rendered(source: string, breaks = true) {
+function rendered(source: string, breaks = true, dialect: DocumentMeta['dialect'] = 'document') {
   const container = document.createElement('div');
   container.innerHTML = DOMPurify.sanitize(new MarkdownIt({ html: true, breaks }).render(source));
-  enhanceDoocsHtml(container);
+  enhanceDoocsHtml(container, dialect);
   return container;
 }
 
@@ -53,6 +55,61 @@ describe('Doocs HTML presentation compatibility', () => {
     enhanceDoocsHtml(container);
     expect(container.querySelectorAll('.md-alert > strong')).toHaveLength(2);
     expect(container.querySelector('.md-alert-tip p')?.textContent).toBe('Nested body');
+  });
+
+  it('uses native details with the requested default open state and a safe summary', () => {
+    const container = rendered('> [!note]- **默认收起** &lt;img src=x onerror=bad()&gt;\n> 第一段 **加粗**。\n>\n> 第二段\n\n> [!TIP]+ 默认展开\n> 已展开正文', true, 'obsidian');
+    const folded = container.querySelector<HTMLDetailsElement>('details.md-alert-note')!;
+    const opened = container.querySelector<HTMLDetailsElement>('details.md-alert-tip')!;
+    expect(folded.open).toBe(false);
+    expect(folded.dataset.calloutFold).toBe('closed');
+    expect(folded.querySelector(':scope > summary')?.textContent).toBe('默认收起 <img src=x onerror=bad()>');
+    expect(folded.querySelector('summary')?.children).toHaveLength(0);
+    expect(folded.querySelector('img,[onerror]')).toBeNull();
+    expect(folded.querySelectorAll(':scope > .md-alert-body > p')).toHaveLength(2);
+    expect(folded.querySelector('.md-alert-body strong')?.textContent).toBe('加粗');
+    expect(opened.open).toBe(true);
+    expect(opened.dataset.calloutFold).toBe('open');
+    expect(opened.querySelector(':scope > summary')?.textContent).toBe('默认展开');
+  });
+
+  it('preserves original formula nodes, source ranges and nested callout content', () => {
+    const container = rendered('> [!note]- Outer\n> Body **Markdown**\n>\n> > [!warning]+ Inner\n> > Nested body\n>\n> ```js\n> console.log(1)\n> ```', true, 'obsidian');
+    const outer = container.querySelector<HTMLDetailsElement>('details.md-alert-note')!;
+    const inner = outer.querySelector<HTMLDetailsElement>('details.md-alert-warning')!;
+    expect(outer.open).toBe(false);
+    expect(inner.open).toBe(true);
+    expect(inner.querySelector('.md-alert-body')?.textContent).toContain('Nested body');
+    expect(outer.querySelector('pre code')?.textContent).toBe('console.log(1)\n');
+    const mapped = document.createElement('div');
+    mapped.innerHTML = DOMPurify.sanitize(`<blockquote class="original" data-source-line="11" data-source-end="18" id="note-anchor"><p>[!note]- Formula<br/>${katex.renderToString('x^2 + y^2', { displayMode: true })}</p></blockquote>`);
+    const formula = mapped.querySelector('.katex')!;
+    enhanceDoocsHtml(mapped, 'obsidian');
+    const details = mapped.querySelector('details')!;
+    expect(details.classList.contains('original')).toBe(true);
+    expect(details.getAttribute('data-source-line')).toBe('11');
+    expect(details.getAttribute('data-source-end')).toBe('18');
+    expect(details.id).toBe('note-anchor');
+    expect(details.querySelector('.md-alert-body .katex')).toBe(formula);
+    expect(details.querySelector('summary')?.textContent).toBe('Formula');
+    enhanceDoocsHtml(container, 'obsidian');
+    expect(container.querySelectorAll('details.md-alert-foldable')).toHaveLength(2);
+    expect(container.querySelectorAll('summary')).toHaveLength(2);
+  });
+
+  it('supports title-only folds in extension modes without reinterpreting spaced markers or strict modes', () => {
+    const container = rendered('> [!note]-\n\n> [!tip]+ Title only\n\n> [!warning] - Ordinary title');
+    expect(container.querySelector<HTMLDetailsElement>('details.md-alert-note')?.open).toBe(false);
+    expect(container.querySelector('details.md-alert-note > summary')?.textContent).toBe('Note');
+    expect(container.querySelector('details.md-alert-note > .md-alert-body')?.children).toHaveLength(0);
+    expect(container.querySelector<HTMLDetailsElement>('details.md-alert-tip')?.open).toBe(true);
+    expect(container.querySelector('blockquote.md-alert-warning > strong')?.textContent).toBe('- Ordinary title');
+    expect(rendered('> # Heading\n>\n> [!note]- Body marker', true, 'obsidian').querySelector('.md-alert')).toBeNull();
+    for (const dialect of ['commonmark', 'gfm'] as const) {
+      const strict = rendered('> [!note]- Literal text\n> Body', true, dialect);
+      expect(strict.querySelector('.md-alert,details')).toBeNull();
+      expect(strict.textContent).toContain('[!note]- Literal text');
+    }
   });
 
   it('restores only bounded image dimensions after unrelated inline styles are removed', () => {

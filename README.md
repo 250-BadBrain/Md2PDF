@@ -63,13 +63,14 @@ npm run test:browser
 | --- | --- |
 | 基础 Markdown | ATX/Setext 标题、段落、水平线、粗体、斜体、转义、代码、嵌套列表和引用、行内及引用式链接／图片、自动链接 |
 | GFM 常用扩展 | 表格及列对齐、删除线、任务列表、NOTE/TIP/IMPORTANT/WARNING/CAUTION 提示块 |
+| 扩展表格 | 文档/Obsidian 模式支持相邻 `\|\|` 合并列、`^^` 延续上一行单元格、行末反斜杠连接多行单元格、表格后 `[表题]`；普通空单元格用 `\| \|` |
 | 文档扩展 | 脚注、缩写、定义列表、Emoji、高亮 `==文本==`、插入线 `++文本++`、上下标 `H~2~O` / `x^2^`、注音 `[你好]{nǐ hǎo}` / `[小夜時雨]^(さ・よ・しぐれ)`、CJK 波浪线 `~波浪线~` |
 | 目录 | 独立行 `[TOC]`、`[[toc]]`、`${toc}`；支持 1–6 级标题、重复标题和显式 ID |
 | 属性 | 标题 `## 标题 {#custom-id}`；图片 `![图](a.png){width=240 height=120}`；允许 id/class/width/height |
-| 数学 | `$...$`、`$$...$$`、`\(...\)`、`\[...\]`、`math` 代码围栏，由 KaTeX 渲染 |
+| 数学 | `$...$`、`$$...$$`、`\(...\)`、`\[...\]`、`math` 代码围栏，由 KaTeX 渲染；独立行支持 equation/align/alignat/gather 及其星号形式、CD 环境 |
 | 图表 | `mermaid`、`plantuml` / `puml`、`infographic` 代码围栏；全部本地渲染，无效图表保留源代码并显示诊断 |
 | HTML | 安全的内嵌 HTML，如 details/summary、kbd、上下标、图片、center 和表格；保留有限的图片宽高，去除脚本、事件属性、危险 URL、其它内联样式和嵌入页面 |
-| 提示容器 | `::: 类型 可选标题`，以 `:::` 结束；支持原六种、theorem/definition/proof 及中文自定义类型、嵌套容器；提示块支持 `[!IMPORTANT] 自定义标题` |
+| 提示容器 | `::: 类型 可选标题`，以 `:::` 结束；支持原六种、theorem/definition/proof 及中文自定义类型、嵌套容器；提示块支持 `[!IMPORTANT] 自定义标题`、`[!note]-` 默认折叠及 `[!note]+` 默认展开 |
 | 手动分页 | 独立行 `[pagebreak]`、`{pagebreak}`、`<!-- pagebreak -->`；代码块中的同名文本不会分页 |
 
 默认文档扩展模式保留原项目的语法与换行习惯。“排版 → Markdown 模式”新增 CommonMark、GFM、Obsidian 常用扩展；也可在 YAML 指定 `dialect`。CommonMark/GFM 固定使用标准软换行并关闭数学、Mermaid 和文档扩展。文档/Obsidian 模式可独立设置 `softBreaks: space`。所有模式仍清洗 HTML，不宣称输出与标准或 GitHub 网站完全相同。本项目不执行 MDX/JSX，也不提供 Pandoc 的完整语法或任意 LaTeX 环境。
@@ -79,6 +80,8 @@ Obsidian 模式支持当前文档 `[[#标题|别名]]`、段落结尾 `^block-id
 完整官方例集已纳入离线测试，共检查 1,324 个例子；已知差异逐例登记，不宣称全量兼容。支持清单、差异原因和验证方法见 [Markdown 兼容性说明](docs/markdown-compatibility.md)，可运行 `npm run test:compatibility`。
 
 [Doocs 默认中文示例](tests/fixtures/doocs/README.md)已加入完整文档回归。单波浪与下标语法冲突，因此只把纯 CJK 文字标为波浪线，ASCII 内容继续用作下标；需要跨语言的波浪线可用 `<span class="md-wavy">text</span>`。Ruby 的 `・`、`．`、`。`、`-` 分隔读音按 Unicode 字符分组。
+
+[扩展语法示例](tests/fixtures/extended-markdown.md)展示独立 LaTeX 环境、合并及多行表格、嵌套折叠提示块。公式可紧接正文而无需空行；未闭合公式不会跨越列表、引用、容器或代码边界寻找结束符。仅支持 KaTeX 的命令与环境，未知命令保留诊断。折叠提示块可用键盘切换，预览跨页的片段同步折叠状态；打印、图像 PDF 和批量导出始终展开生成的提示块并包含完整正文。原始 HTML details 保持原有行为。
 
 PlantUML 使用官方 JavaScript 引擎与 Viz 在隔离 iframe 中生成 SVG，不调用在线服务器。首次使用按需加载约 5.4MB 原始引擎资源；静态部署和离线缓存包含这些文件。支持引擎内置图形语法，禁用预处理、include/theme、URL、外部图片、字体和图标库；复杂内容受源码、尺寸和 20 秒限制。Infographic 使用 AntV 模板在本地渲染，使用系统字体；示例中的四种图标已内置，其它图标/插画显示本地通用替代。不会联网下载图标或字体；自定义 SVG/CSS、外部资源不透传，源码与数据规模有限制。上述边界不等于完整复制 Doocs 的所有扩展。
 

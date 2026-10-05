@@ -2,6 +2,41 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import { extractPdfText } from './pdf-text';
 
+test('extended math, table spans and folded callouts retain bodies in print across engines', async ({page}) => {
+  await page.goto('/');
+  await page.getByRole('textbox', {name:'Markdown 源代码编辑区'}).fill(await fs.readFile('tests/fixtures/extended-markdown.md', 'utf8'));
+  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('.katex-error,.diagram-error')).toHaveCount(0);
+  await expect(page.locator('.katex')).toHaveCount(5);
+  await expect(page.locator('td[colspan="2"]')).toHaveText('合并两列');
+  await expect(page.locator('td[rowspan="2"]')).toHaveText('分组甲');
+  const folded = page.locator('details.md-alert-foldable[data-callout-fold="closed"]').first();
+  await expect(folded).not.toHaveAttribute('open');
+  const summary = folded.locator(':scope > summary');
+  await expect(summary).toHaveCSS('display', 'list-item');
+  await summary.focus(); await page.keyboard.press('Enter');
+  await expect(folded.getByText('正文在折叠时仍应导出。')).toBeVisible();
+  await summary.click(); await expect(folded).not.toHaveAttribute('open');
+  await page.evaluate(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow')!;
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {get() {
+      const win = descriptor.get!.call(this);
+      if (win) win.print = () => { document.body.dataset.printed = 'true'; };
+      return win;
+    }});
+  });
+  await page.getByRole('button', {name:'打印／保存 PDF'}).click();
+  await expect(page.locator('body')).toHaveAttribute('data-printed','true');
+  const printed = await page.locator('iframe').getAttribute('srcdoc');
+  expect(printed).toContain('正文在折叠时仍应导出');
+  expect(printed).toContain('嵌套正文也应导出');
+  const closedCount = await page.evaluate(html => {
+    const doc = new DOMParser().parseFromString(html!, 'text/html');
+    return doc.querySelectorAll('details.md-alert-foldable:not([open])').length;
+  }, printed);
+  expect(closedCount).toBe(0);
+});
+
 test('Doocs extensions and local diagram engines render without external requests', async ({page}) => {
   const external: string[] = [];
   page.on('request', request => {

@@ -207,7 +207,18 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
       }
     }
   });
-  if(dialect!=='commonmark'&&dialect!=='gfm')enhanceDoocsHtml(container);
+  // KaTeX's automatic tags use body-wide CSS counters, which drift when
+  // preview pages are virtualized or another export document is mounted.
+  for (const selector of ['.katex .eqn-num', '.katex .mml-eqn-num']) {
+    container.querySelectorAll(selector).forEach((tag, index) => {
+      tag.setAttribute('data-equation-number', String(index + 1));
+      tag.textContent = `(${index + 1})`;
+    });
+  }
+  if(dialect!=='commonmark'&&dialect!=='gfm')enhanceDoocsHtml(container, dialect);
+  container.querySelectorAll<HTMLDetailsElement>('details.md-alert-foldable').forEach((callout, index) => {
+    callout.dataset.calloutKey = String(index);
+  });
   container.querySelectorAll<HTMLAnchorElement>('.wiki-link[data-wiki-target]').forEach(link=>{
     const target=link.dataset.wikiTarget || '';const [note,...parts]=target.split('#');const fragment=parts.join('#');
     const current=(path||'').split('/').pop()?.replace(/\.(md|markdown)$/i,'').toLowerCase();

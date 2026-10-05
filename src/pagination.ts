@@ -256,18 +256,29 @@ function fitWideMath(node: HTMLElement) {
 function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HTMLElement) => boolean) {
   if (node.matches('svg, figure, .mermaid-diagram, .diagram-block, .katex-display, table, h1, h2, h3, h4, h5, h6')) return null;
   // Keep one segment per text node instead of one JS object per character.
-  const segments: { node: Text; start: number; count: number; offsets?: Uint32Array; ruby?: HTMLElement }[] = [];
-  const rubies = new Set<HTMLElement>();
+  const segments: { node: Text; start: number; count: number; offsets?: Uint32Array; atomic?: HTMLElement }[] = [];
+  const atomics = new Set<HTMLElement>();
   let positionCount = 0;
   const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
   let textNode: Node | null;
   while ((textNode = walker.nextNode())) {
+    // Nested tables do not pass through the top-level row paginator. Keep their
+    // spans and headers intact rather than cutting through arbitrary cell text.
+    const table = textNode.parentElement?.closest<HTMLElement>('table');
+    if (table) {
+      if (!atomics.has(table)) {
+        atomics.add(table);
+        segments.push({ node: textNode as Text, start: positionCount++, count: 1, atomic: table });
+      }
+      continue;
+    }
     if (textNode.parentElement?.closest('svg, .katex, .mermaid-diagram, .diagram-block')) continue;
+    if (textNode.parentElement?.closest('details.md-alert-foldable > summary')) continue;
     const ruby = textNode.parentElement?.closest<HTMLElement>('ruby');
     if (ruby) {
-      if (!rubies.has(ruby)) {
-        rubies.add(ruby);
-        segments.push({ node: textNode as Text, start: positionCount++, count: 1, ruby });
+      if (!atomics.has(ruby)) {
+        atomics.add(ruby);
+        segments.push({ node: textNode as Text, start: positionCount++, count: 1, atomic: ruby });
       }
       continue;
     }
@@ -284,7 +295,7 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
     let low = 0, high = segments.length - 1;
     while (low < high) { const middle = (low + high) >> 1; if (segments[middle].start + segments[middle].count <= index) low = middle + 1; else high = middle; }
     const segment = segments[low]; const local = index - segment.start;
-    if (segment.ruby) return { node: segment.ruby.parentNode!, offset: Array.from(segment.ruby.parentNode!.childNodes).indexOf(segment.ruby) + 1 };
+    if (segment.atomic) return { node: segment.atomic.parentNode!, offset: Array.from(segment.atomic.parentNode!.childNodes).indexOf(segment.atomic) + 1 };
     return { node: segment.node, offset: segment.offsets ? segment.offsets[local] : local + 1 };
   };
   const makeHead = (index: number) => {
@@ -360,7 +371,23 @@ function splitToFit(node: HTMLElement, content: HTMLElement, testFit?: (head: HT
     if (original.tagName === 'LI') continuation.classList.add('list-item-continuation');
     continuation = continuation.firstElementChild as HTMLElement | null;
   }
+  restoreCalloutSummaries(node, tail);
   return { head, tail };
+}
+
+// Repeat only the safe title on automatic and explicit page continuations.
+function restoreCalloutSummaries(node: HTMLElement, continuation: HTMLElement) {
+  const callouts = [node, ...node.querySelectorAll<HTMLElement>('details.md-alert-foldable')]
+    .filter(element => element.matches('details.md-alert-foldable'));
+  for (const fragment of [continuation, ...continuation.querySelectorAll<HTMLElement>('details.md-alert-foldable')]) {
+    if (!fragment.matches('details.md-alert-foldable') || fragment.querySelector(':scope > summary')) continue;
+    const original = callouts.find(callout => callout.dataset.calloutKey === fragment.dataset.calloutKey);
+    const title = original?.querySelector(':scope > summary')?.cloneNode(true) as HTMLElement | undefined;
+    if (title) {
+      title.removeAttribute('id'); title.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+      fragment.prepend(title);
+    }
+  }
 }
 
 function fitAtomicNode(node: HTMLElement, content: HTMLElement) {
@@ -591,6 +618,9 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
   for (const [name, value] of Object.entries(layoutVariables(meta))) source.style.setProperty(name, value);
   host.style.width = layoutVariables(meta)['--pdf-page-width'];
   source.innerHTML = html;
+  // Measure and export complete callout bodies, including initially folded ones.
+  // The preview restores the source's fold state without altering these pages.
+  source.querySelectorAll<HTMLDetailsElement>('details.md-alert-foldable').forEach(callout => { callout.open = true; });
   if (meta.figureNumbers) numberDocumentFigures(source);
   let notes: NoteContext | undefined;
   if (meta.footnotes === 'near-reference') {
@@ -635,6 +665,7 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
         if (emitted.has(element.id)) element.removeAttribute('id');
         else if (element.id) emitted.add(element.id);
       }
+      restoreCalloutSummaries(node as HTMLElement, part);
       node.before(part);
     };
     for (const marker of breaks) {

@@ -2,6 +2,8 @@ import MarkdownIt from 'markdown-it';
 import { gfmAutolinks } from './gfm-autolinks';
 import { wikiLinks } from './wiki-links';
 import { doocsExtensions } from './doocs-extensions';
+import { markdownMathExtensions } from './math-extensions';
+import { tableExtensions } from './table-extensions';
 
 
 import markdownItAttrs from 'markdown-it-attrs';
@@ -245,6 +247,7 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
     .use(markdownItSub)
     .use(markdownItSup)
     .use(doocsExtensions)
+    .use(tableExtensions)
     .use(markdownItTaskLists, {
       enabled: false,
       label: false,
@@ -344,7 +347,7 @@ function createMarkdown(softBreaks: 'newline' | 'space', renderMath?: (source: s
 }
 
 export function containsMathSyntax(markdownSource: string) {
-  return /\$|\\\(|\\\[|(?:`{3,}|~{3,})\s*math\b/.test(markdownSource);
+  return /\$|\\\(|\\\[|\\begin\{(?:equation|align|alignat|gather|CD)\*?\}|(?:`{3,}|~{3,})\s*math\b/.test(markdownSource);
 }
 
 async function getMarkdown(markdownSource: string, softBreaks: 'newline' | 'space', dialect: NonNullable<DocumentMeta['dialect']>) {
@@ -364,7 +367,7 @@ async function getMarkdown(markdownSource: string, softBreaks: 'newline' | 'spac
       engine: { renderToString: render },
       delimiters: ['dollars', 'brackets', 'gitlab'],
       katexOptions: { trust: false, strict: 'ignore', throwOnError: false },
-    });
+    }).use(markdownMathExtensions, { render: (source: string, display: boolean) => render(source, { displayMode: display }) });
   }));
   return mathMarkdownPromises.get(key)!;
 }

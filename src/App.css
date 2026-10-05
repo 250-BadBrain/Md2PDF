@@ -505,11 +505,20 @@ textarea {
 }
 
 .markdown-body .md-alert > strong,
-.markdown-body .md-container > strong {
+.markdown-body .md-container > strong,
+.markdown-body .md-alert-foldable > summary {
   display: block;
   margin-bottom: 0.25em;
   font-size: 0.92em;
 }
+
+.markdown-body .md-alert-foldable > summary { display: list-item; list-style: none; cursor: pointer; font-weight: 700; }
+.markdown-body .md-alert-foldable > summary::before { content: '▶'; display: inline-block; width: 1.2em; }
+.markdown-body .md-alert-foldable[open] > summary::before { content: '▼'; }
+.markdown-body .md-alert-foldable > summary::-webkit-details-marker { display: none; }
+.markdown-body .md-alert-foldable:not([open]) > summary { margin-bottom: 0; }
+.markdown-body .md-alert-foldable > summary:focus-visible { outline: 2px solid #21625d; outline-offset: 3px; }
+.markdown-body .md-alert-body > :last-child { margin-bottom: 0; }
 
 .markdown-body .md-alert p:last-child,
 .markdown-body .md-container p:last-child {
@@ -665,6 +674,9 @@ textarea {
   break-inside: auto;
   page-break-inside: auto;
 }
+
+.markdown-body caption { padding: 0 0 0.5em; font-weight: 650; text-align: center; }
+.markdown-body .katex [data-equation-number]::before { content: none; counter-increment: none; }
 
 .actions select { max-width: 130px; height: 34px; border: 1px solid #c8c8c2; border-radius: 6px; background: white; }
 .preview-status, .page-navigation { position: sticky; top: 0; z-index: 2; padding: 8px 12px; background: #f7f8f4; border-radius: 6px; font-size: 13px; }
