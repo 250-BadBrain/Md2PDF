@@ -1,11 +1,20 @@
 import type MarkdownIt from 'markdown-it';
 import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
 import type { RuleBlock } from 'markdown-it/lib/parser_block.mjs';
+import type Ruler from 'markdown-it/lib/ruler.mjs';
 import multimdTable from 'markdown-it-multimd-table';
 
 type Row = { cells: string[]; continuation: boolean };
 type Caption = { text: string; id?: string };
 const MAX_MULTILINE_PADDING = 4_000_000;
+
+function registeredRule<T>(ruler: Ruler<T>, name: string): T | undefined {
+  // Ruler exposes no public getter by registration name. Its rule metadata
+  // retains string names in production; Function.name does not survive Vite
+  // minification. Keep this pinned markdown-it internal access in one place.
+  const rules = (ruler as Ruler<T> & { __rules__: { name: string; enabled: boolean; fn: T }[] }).__rules__;
+  return rules.find(rule => rule.name === name && rule.enabled)?.fn;
+}
 
 function caption(line: string): Caption | undefined {
   const match = /^\[(.+?)\](?:\[([^\[\]]*)\]|\s*\{#([^{}]*)\})?\s*$/.exec(line.trim());
@@ -219,14 +228,13 @@ function guardedTable(ordinary: RuleBlock, extended: RuleBlock): RuleBlock {
 
 /** Opt-in document table extensions; unchanged rows retain the native GFM rule. */
 export function tableExtensions(md: MarkdownIt): void {
-  const before = md.block.ruler.getRules('');
-  const index = before.findIndex(rule => rule.name === 'table');
-  if (index < 0) return;
-  const ordinary = before[index];
+  const ordinary = registeredRule(md.block.ruler, 'table');
+  if (!ordinary) return;
   md.use(multimdTable, { multiline: true, rowspan: true, headerless: false, multibody: false, autolabel: false });
-  const extended = md.block.ruler.getRules('')[index];
+  const extended = registeredRule(md.block.ruler, 'table');
+  if (!extended) throw new Error('Extended table rule was not registered');
   md.block.ruler.at('table', guardedTable(ordinary, extended), { alt: ['paragraph', 'reference'] });
-  const attributes = md.core.ruler.getRules('').find(rule => rule.name === 'curlyAttrs');
+  const attributes = registeredRule(md.core.ruler, 'curly_attributes');
   if (attributes) md.core.ruler.at('curly_attributes', state => {
     // markdown-it-attrs calculates spans by hiding native placeholder cells.
     // MultiMarkdown has already removed those cells; calculating twice loses

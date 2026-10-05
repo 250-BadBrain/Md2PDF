@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
+import fs from 'node:fs/promises';
+import {capturePrintedPdf} from './print';
+import {extractPdfText} from './pdf-text';
 let server: ChildProcess;
 test.beforeAll(async () => {
   server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--config', 'tests/fixtures/offline.config.mjs', '--host', '127.0.0.1', '--port', '4174', '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -31,4 +34,29 @@ test('production app caches all modules and renders and exports offline', async 
   expect((await downloading).suggestedFilename()).toMatch(/\.pdf$/);
   expect(failures).toEqual([]);
   await context.setOffline(false);
+});
+
+test('minified production extensions preserve table spans and complete folded PDFs offline', async ({page,context}) => {
+  const errors: string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('http://127.0.0.1:4174');
+  await page.getByRole('textbox',{name:'Markdown 源代码编辑区'}).fill(await fs.readFile('tests/fixtures/extended-markdown.md','utf8'));
+  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy','false');
+  await expect(page.locator('td[colspan="2"]')).toHaveText('合并两列');
+  await expect(page.locator('td[rowspan="2"]')).toHaveText('分组甲');
+  await expect(page.locator('caption')).toHaveText('统计表');
+  await expect(page.locator('.katex')).toHaveCount(5);
+  await expect(page.locator('.eqn-num')).toHaveText('(1)');
+  await expect(page.locator('details.md-alert-foldable[data-callout-fold="closed"]')).not.toHaveAttribute('open');
+  await expect.poll(()=>page.evaluate(()=>Boolean(navigator.serviceWorker.controller)),{timeout:60000}).toBe(true);
+  await context.setOffline(true);await page.reload();
+  await expect(page.locator('td[colspan="2"]')).toHaveText('合并两列');
+  await expect(page.locator('td[rowspan="2"]')).toHaveText('分组甲');
+  await expect(page.locator('.katex')).toHaveCount(5);
+  const text=await extractPdfText(await capturePrintedPdf(page));
+  for(const phrase of ['统计表','第一行','第二行','正文在折叠时仍应导出','嵌套正文也应导出','结束标记','(1)'])expect(text).toContain(phrase);
+  await page.getByLabel('PDF 导出方式').selectOption('image');
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'下载',exact:true}).click();
+  expect((await downloadPromise).suggestedFilename()).toMatch(/\.pdf$/);
+  expect(errors).toEqual([]);await context.setOffline(false);
 });

@@ -1,4 +1,6 @@
 import MarkdownIt from 'markdown-it';
+import type Ruler from 'markdown-it/lib/ruler.mjs';
+import markdownItAttrs from 'markdown-it-attrs';
 import { describe, expect, it } from 'vitest';
 import { tableExtensions } from '../src/table-extensions';
 import { parseMarkdownSyntax } from '../src/markdown-parser';
@@ -10,7 +12,32 @@ function render(source: string) {
   return { md, doc };
 }
 
+function renameRegisteredRule<T extends (...args: never[]) => unknown>(ruler: Ruler<T>, registeredName: string, minifiedName: string) {
+  const rules = (ruler as Ruler<T> & { __rules__: { name: string; fn: T; alt: string[] }[] }).__rules__;
+  const rule = rules.find(item => item.name === registeredName)!;
+  const original = rule.fn;
+  const renamed = ((...args: Parameters<T>) => original(...args)) as T;
+  Object.defineProperty(renamed, 'name', { value: minifiedName });
+  ruler.at(registeredName, renamed, { alt: rule.alt });
+}
+
 describe('Document table extensions', () => {
+  it.each(['', 'a'])('uses stable registration names when rule functions are renamed to %j', name => {
+    const md = new MarkdownIt().use(markdownItAttrs);
+    renameRegisteredRule(md.block.ruler, 'table', name);
+    renameRegisteredRule(md.core.ruler, 'curly_attributes', name);
+    md.use(tableExtensions);
+    const source = '[说明][table-caption]\n| A | B | C |\n|---|---|---|\n| wide || third |\n| ^^ | ^^ | next |\n\n| A | B |\n|---|---|\n| ordinary | *cell*{.emphasis} |';
+    const doc = document.createElement('div'); doc.innerHTML = md.render(source);
+    const wide = doc.querySelector('tbody td');
+    expect(wide?.textContent).toBe('wide');
+    expect(wide?.getAttribute('colspan')).toBe('2');
+    expect(wide?.getAttribute('rowspan')).toBe('2');
+    expect(doc.querySelector('caption')?.id).toBe('table-caption');
+    expect(doc.querySelector('table:last-of-type em.emphasis')?.textContent).toBe('cell');
+    expect(doc.textContent).toContain('next');
+  });
+
   it('keeps ordinary GFM tables byte-for-byte including spaced empty cells, alignments and ragged rows', () => {
     const source = '| A | B | C |\n|:---|:---:|---:|\n| one | | three |\n| short |\n| a | b | c | ignored |\n\nAfter';
     expect(new MarkdownIt().use(tableExtensions).render(source)).toBe(new MarkdownIt().render(source));
