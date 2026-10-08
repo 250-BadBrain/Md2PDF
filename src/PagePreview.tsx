@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { DocumentMeta } from './markdown';
 import { pageSize } from './page-size';
 import { navigateToSource, sourceLocation } from './source-map';
 
-export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
-  pages: string[]; meta: DocumentMeta; scale: number; panel: HTMLElement | null; currentPageChanged?: (page: number) => void;
+export function PagePreview({ pages, meta, scale, panel, panelChanged, busy, controls, currentPageChanged }: {
+  pages: string[]; meta: DocumentMeta; scale: number; panel: HTMLElement | null;
+  panelChanged: (element: HTMLDivElement | null) => void; busy: boolean; controls?: ReactNode;
+  currentPageChanged?: (page: number) => void;
 }) {
   const sizes=pages.map(html=>pageSize(html,meta));
   const offsets:number[]=[];let total=0;
@@ -54,21 +56,22 @@ export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
           .sort((a,b) => (Number(a.dataset.sourceEnd)-Number(a.dataset.sourceLine))-(Number(b.dataset.sourceEnd)-Number(b.dataset.sourceLine)))[0];
         if (block) {
           revealCallouts(block);
-          panel.scrollTop += block.getBoundingClientRect().top - panel.getBoundingClientRect().top - 40;
+          panel.scrollTop += block.getBoundingClientRect().top - panel.getBoundingClientRect().top - 20;
         }
       }, 30);
     };
     window.addEventListener('preview-navigation', locate); return () => window.removeEventListener('preview-navigation', locate);
   }, [mappings, panel, scale]);
-  const first=offsets.findIndex((top,index)=>top+heights[index]>=scroll);
-  const last=offsets.findIndex(top=>top>scroll+viewport);
+  const hostTop = host.current && panel ? host.current.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop : 0;
+  const first=offsets.findIndex((top,index)=>hostTop+top+heights[index]>=scroll);
+  const last=offsets.findIndex(top=>hostTop+top>scroll+viewport);
   const start=Math.max(0,(first<0?pages.length-1:first)-2);
   const end=Math.min(pages.length,(last<0?pages.length:last)+2);
   useLayoutEffect(() => {
     if (!panel || !host.current || !pages.length || !panel.clientHeight || !panel.getClientRects().length) return;
     let largest = -1, page = 1;
     Array.from(host.current.children).forEach((element, index) => {
-      const top = (element as HTMLElement).offsetTop - panel.offsetTop;
+      const top = element.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop;
       const visible = Math.max(0, Math.min(top + heights[index], scroll + viewport) - Math.max(top, scroll));
       if (visible > largest) { largest = visible; page = index + 1; }
     });
@@ -96,15 +99,19 @@ export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
   }, [pages, start, end]);
   const jump = (index: number) => {
     const shell = host.current?.children[index] as HTMLElement | undefined;
-    if (panel && shell) panel.scrollTop = shell.offsetTop - panel.offsetTop - 20;
+    if (panel && shell) panel.scrollTop += shell.getBoundingClientRect().top - panel.getBoundingClientRect().top - 20;
   };
   return <>
+    <div className="preview-controls" aria-label="PDF 预览工具">
+    {controls}
     {pages.length > 1 ? <div className="page-navigation">
       <span>共 {pages.length} 页</span>
       <label>跳至 <input aria-label="跳转页码" type="number" min={1} max={pages.length} value={target}
         onChange={(event) => setTarget(Math.max(1, Math.min(pages.length, Number(event.target.value) || 1)))} /></label>
       <button type="button" onClick={() => jump(target - 1)}>跳转</button>
     </div> : null}
+    </div>
+    <div className="preview-panel" ref={panelChanged} aria-busy={busy} aria-label="PDF 页面">
     <div ref={host} className="pdf-document pdf-document-preview" onClick={(event) => {
       if ((event.target as Element).closest('details.md-alert-foldable > summary')) return;
       const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
@@ -118,7 +125,7 @@ export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
         window.setTimeout(() => {
           const destination = host.current?.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
           if (destination) revealCallouts(destination);
-          destination?.scrollIntoView({ block: 'start' });
+          if (destination && panel) panel.scrollTop += destination.getBoundingClientRect().top - panel.getBoundingClientRect().top - 20;
         }, 60);
       }
     }}>
@@ -131,6 +138,7 @@ export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
         }} style={{ width: `${sizes[index].width}mm`, height: `${sizes[index].height}mm`, transform: `scale(${scale})` }}
           dangerouslySetInnerHTML={pageMarkup[index]} /> : <div className="page-placeholder">第 {index + 1} 页</div>}
       </div>)}
+    </div>
     </div>
   </>;
 }

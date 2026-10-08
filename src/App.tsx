@@ -143,7 +143,7 @@ function App() {
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const assetUrlsRef = useRef<AssetUrls>({});
-  const previewPanelRef = useRef<HTMLElement>(null);
+  const [previewPanel, setPreviewPanel] = useState<HTMLElement | null>(null);
   useEffect(() => {
     let cancelled = false;
     const recover = async () => {
@@ -261,7 +261,7 @@ function App() {
   }, [assetUrls, mode, singleFilePath, source, preferences, fontRevision]);
 
   useLayoutEffect(() => {
-    const panel = previewPanelRef.current;
+    const panel = previewPanel;
     if (!panel) return;
 
     const updateScale = () => {
@@ -276,7 +276,7 @@ function App() {
     observer.observe(panel);
 
     return () => observer.disconnect();
-  }, [mode, previewMeta, pages]);
+  }, [previewPanel, mode, previewMeta, pages]);
 
   useEffect(() => {
     return () => {
@@ -415,7 +415,7 @@ function App() {
     const filename = getPdfName(singleFileName);
     const exportPages = selectedPages.indices.map(index => pages[index]);
     if (exportMode === 'print') {
-      await printPages(exportPages, previewMeta);
+      await printPages(exportPages, previewMeta, filename);
       setExportStatus('打印对话框已打开：请选择另存为 PDF，关闭浏览器页眉页脚。');
       return;
     }
@@ -603,16 +603,16 @@ function App() {
             <button aria-pressed={workspaceView === 'editor'} onClick={() => setWorkspaceView('editor')}>编辑</button>
             <button aria-pressed={workspaceView === 'preview'} onClick={() => setWorkspaceView('preview')}>预览</button>
           </div>
-          <Editor source={source} change={handleSourceChange} disabled={isDownloading || isUploading} panel={previewPanelRef.current}
+          <Editor source={source} change={handleSourceChange} disabled={isDownloading || isUploading} panel={previewPanel}
             images={addImages}
             draftStatus={draftStatus} clear={() => { if (clearDraft()) { setDraftEnabled(false); setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ } setDraftStatus('已清除保存的草稿；项目库中的项目仍保留，继续编辑会重新保存。'); } else setDraftStatus('无法清除草稿。'); }}
             download={() => { void downloadBlob(new Blob([source], { type: 'text/markdown;charset=utf-8' }), (singleFileName || 'document.md').replace(/\.(markdown|txt)$/i, '.md')); }} />
           <section
-            className="preview-panel"
+            className="preview-pane"
             aria-label="PDF 预览区"
-            ref={previewPanelRef}
-            aria-busy={isRendering}
           >
+            <PagePreview pages={pages} meta={previewMeta} scale={previewScale} panel={previewPanel} panelChanged={setPreviewPanel}
+              busy={isRendering} currentPageChanged={setCurrentPage} controls={<>
             {isRendering ? <div className="preview-status" role="status">正在更新分页预览…</div> : null}
             {previewErrorMessage ? (
               <div className="preview-error">{previewErrorMessage}</div>
@@ -622,7 +622,7 @@ function App() {
               count={selectedPages.indices.length} error={selectedPages.error} disabled={isDownloading || isRendering} />
             {exportMode === 'print' ? <p className="print-guide">打印时选择“另存为 PDF”、文档纸张尺寸，并关闭浏览器页眉页脚。</p> : null}
             {exportMode === 'direct' ? <p className="print-guide">实验：图像页面叠加可搜索正文，需要导入 TTF 字体。公式、图表保持图像；emoji、扩展区汉字和矢量输出请使用打印保存。</p> : null}
-            <PagePreview pages={pages} meta={previewMeta} scale={previewScale} panel={previewPanelRef.current} currentPageChanged={setCurrentPage} />
+            </>} />
           </section>
         </section>
       )}

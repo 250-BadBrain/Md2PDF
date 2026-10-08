@@ -190,7 +190,7 @@ async function embeddedStyles() {
   }));
 }
 
-async function printHtml(pages: string[], meta: DocumentMeta) {
+async function printHtml(pages: string[], meta: DocumentMeta, title: string) {
   const wrapper = document.createElement('div');
   wrapper.innerHTML = pages.map((html,index) => {
     const {width,height}=pageSize(html,meta);
@@ -212,17 +212,23 @@ async function printHtml(pages: string[], meta: DocumentMeta) {
   const { width, height } = pageDimensions(meta);
   const namedPages=pages.map((html,index)=>{const size=pageSize(html,meta);return `@page sheet${index}{size:${size.width}mm ${size.height}mm;margin:0}`;}).join('');
   const printStyle = `@page {size:${width}mm ${height}mm;margin:0} ${namedPages} html,body{margin:0;padding:0;height:auto;background:white} *{-webkit-print-color-adjust:exact;print-color-adjust:exact} .pdf-page{display:block;width:${width}mm;height:${height}mm;margin:0;box-shadow:none;transform:none;break-after:page;break-inside:avoid}.pdf-page:last-child{break-after:auto}.header-anchor{visibility:hidden}.pdf-content{overflow:hidden}`;
-  const title = (meta.title || 'Md2PDF').replace(/[<>&"]/g, '');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title}</title><style>${fontFaceCss()}\n${styles.join('\n').replace(/<\/style/gi, '<\\/style')}\n${printStyle}</style></head><body>${wrapper.innerHTML}</body></html>`;
+  const titleElement = document.createElement('title');
+  titleElement.textContent = title;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">${titleElement.outerHTML}<style>${fontFaceCss()}\n${styles.join('\n').replace(/<\/style/gi, '<\\/style')}\n${printStyle}</style></head><body>${wrapper.innerHTML}</body></html>`;
 }
 
-export async function printPages(pages: string[], meta: DocumentMeta) {
-  const html = await printHtml(pages, meta);
+let activePrintCleanup: (() => void) | undefined;
+
+export async function printPages(pages: string[], meta: DocumentMeta, filename?: string) {
+  // Browsers append .pdf to this title when suggesting a save filename.
+  const title = filename?.replace(/\.pdf$/i, '') || meta.title || 'Md2PDF';
+  const html = await printHtml(pages, meta, title);
   const frame = document.createElement('iframe');
   frame.title = 'PDF 打印文档';
   frame.style.cssText = 'position:fixed;left:-10000px;width:800px;height:1100px;border:0';
   frame.setAttribute('sandbox', 'allow-same-origin allow-modals');
   document.body.appendChild(frame);
+  let cleanup = () => frame.remove();
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('打印文档准备超时，请重试。')), 15000);
@@ -230,9 +236,26 @@ export async function printPages(pages: string[], meta: DocumentMeta) {
     });
     await frame.contentDocument!.fonts.ready;
     await waitForImages(frame.contentDocument!.body);
-    frame.contentWindow!.addEventListener('afterprint', () => frame.remove(), { once: true });
-    frame.contentWindow!.focus();
-    frame.contentWindow!.print();
-    window.setTimeout(() => frame.remove(), 300000);
-  } catch (error) { frame.remove(); throw error; }
+    activePrintCleanup?.();
+    const originalTitle = document.title;
+    const printWindow = frame.contentWindow!;
+    let timer: number;
+    cleanup = () => {
+      window.clearTimeout(timer);
+      printWindow.removeEventListener('afterprint', cleanup);
+      window.removeEventListener('afterprint', cleanup);
+      if (document.title === title) document.title = originalTitle;
+      frame.remove();
+      if (activePrintCleanup === cleanup) activePrintCleanup = undefined;
+    };
+    activePrintCleanup = cleanup;
+    printWindow.addEventListener('afterprint', cleanup, { once: true });
+    window.addEventListener('afterprint', cleanup, { once: true });
+    timer = window.setTimeout(cleanup, 300000);
+    // Chromium derives the print job name from the top-level tab title even
+    // when window.print() is called by a same-origin iframe.
+    document.title = title;
+    printWindow.focus();
+    printWindow.print();
+  } catch (error) { cleanup(); throw error; }
 }

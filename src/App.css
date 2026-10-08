@@ -132,8 +132,29 @@ textarea {
   line-height: 1.65;
 }
 
-.preview-panel {
+.preview-pane {
   height: calc(100vh - 56px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #e8e8e2;
+}
+
+.preview-controls {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow: auto;
+  padding: 12px;
+  border-bottom: 1px solid #d8d8d3;
+  background: #fff;
+}
+
+.preview-panel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 20px;
   background: #e7e7e2;
@@ -679,8 +700,8 @@ textarea {
 .markdown-body .katex [data-equation-number]::before { content: none; counter-increment: none; }
 
 .actions select { max-width: 130px; height: 34px; border: 1px solid #c8c8c2; border-radius: 6px; background: white; }
-.preview-status, .page-navigation { position: sticky; top: 0; z-index: 2; padding: 8px 12px; background: #f7f8f4; border-radius: 6px; font-size: 13px; }
-.page-navigation { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 12px; }
+.preview-status, .page-navigation { padding: 8px 12px; background: #f7f8f4; border-radius: 6px; font-size: 13px; }
+.page-navigation { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
 .page-navigation input { width: 64px; }
 .page-placeholder { height: 100%; background: white; padding: 30px; color: #77776f; }
 .layout-settings { position: fixed; top: 64px; right: 16px; z-index: 10; width: min(360px, calc(100vw - 32px)); max-height: calc(100vh - 80px); overflow: auto; padding: 18px; border: 1px solid #c8c8c2; border-radius: 8px; background: white; box-shadow: 0 8px 30px #0002; }
@@ -840,7 +861,7 @@ textarea {
   }
 
   .editor,
-  .preview-panel {
+  .preview-pane {
     height: calc((100vh - 56px) / 2);
   }
 
@@ -899,9 +920,8 @@ textarea {
   .workspace { display: flex; flex-direction: column; height: auto; }
   .workspace-tabs { display: flex; gap: 8px; padding: 8px; background: white; }
   .workspace-tabs button[aria-pressed=true] { background: #e0ebfa; }
-  .workspace[data-view=editor] .preview-panel, .workspace[data-view=preview] .editor-pane { display: none; }
-  .workspace .editor-pane, .workspace .preview-panel { height: 70dvh; min-height: 300px; width: 100%; }
-  .preview-panel { overflow-x: auto; }
+  .workspace[data-view=editor] .preview-pane, .workspace[data-view=preview] .editor-pane { display: none; }
+  .workspace .editor-pane, .workspace .preview-pane { height: 70dvh; min-height: 300px; width: 100%; }
   .project-library, .layout-settings, .font-settings { padding: 12px; }
   .settings-grid { grid-template-columns: 1fr; }
   .settings-grid input, .settings-grid select { max-width: 100%; }
