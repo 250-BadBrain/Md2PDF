@@ -2,6 +2,42 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import { extractPdfText } from './pdf-text';
 
+test('pasted images restore locally and selected downloads retain Unicode properties and bookmarks', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByRole('textbox', { name: 'Markdown 源代码编辑区' });
+  await editor.fill('# 第一章\n\n开头\n\n[pagebreak]\n\n## 第二章\n\n图片在下面\n\n');
+  await editor.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
+  const png = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4gAAAABJRU5ErkJggg==', 'base64')];
+  await editor.evaluate((element, bytes) => {
+    const clipboard = new DataTransfer(); clipboard.items.add(new File([new Uint8Array(bytes)], '粘贴.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }));
+  }, png);
+  await expect(editor).toHaveValue(/images\/.*\.png/);
+  await expect(page.getByText('项目与图片已保存在此浏览器', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(editor).toHaveValue(/images\/.*\.png/);
+  await expect(page.locator('.pdf-content img')).toHaveCount(1);
+  await expect.poll(() => page.locator('.pdf-content img').evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1);
+  await page.getByRole('button', { name: '文档属性', exact: true }).click();
+  await page.getByLabel('文档标题').fill('纯前端文档'); await page.getByLabel('文档作者').fill('作者');
+  await page.getByLabel('文档主题').fill('选择页面'); await page.getByLabel('文档关键词').fill('图片\n书签');
+  await page.getByRole('button', { name: '保存文档属性' }).click();
+  await page.getByRole('button', { name: '关闭文档属性' }).click();
+  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy', 'false');
+  await page.locator('.page-selection summary').click();
+  await page.getByLabel('导出范围', { exact: true }).selectOption('range'); await page.getByLabel('导出页码').fill('2');
+  await page.getByLabel('PDF 导出方式').selectOption('image'); await page.getByLabel('图像 PDF 清晰度').selectOption('small');
+  const downloaded = page.waitForEvent('download'); await page.getByRole('button', { name: '下载', exact: true }).click();
+  const download = await downloaded;
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const loading = getDocument({ data: Uint8Array.from(await fs.readFile((await download.path())!)) });
+  try {
+    const pdf = await loading.promise;
+    expect(pdf.numPages).toBe(1); expect((await pdf.getOutline())?.map(heading => heading.title)).toEqual(['第二章']);
+    expect((await pdf.getMetadata()).info).toMatchObject({ Title: '纯前端文档', Author: '作者', Subject: '选择页面', Keywords: '图片, 书签' });
+  } finally { await loading.destroy(); }
+});
+
 test('extended math, table spans and folded callouts retain bodies in print across engines', async ({page}) => {
   await page.goto('/');
   await page.getByRole('textbox', {name:'Markdown 源代码编辑区'}).fill(await fs.readFile('tests/fixtures/extended-markdown.md', 'utf8'));
@@ -96,7 +132,7 @@ test('renders and prepares a sandboxed print document across browser engines', a
   expect(await page.locator('iframe').getAttribute('sandbox')).toBe('allow-same-origin allow-modals');
 });
 
-test('dialect switching, local image projects and page-bottom notes across engines',async({page})=>{
+test('dialect switching, local image projects and page-bottom notes across engines',async({page,browserName})=>{
   await page.goto('/');
   await page.locator('input[type=file]').first().setInputFiles([{name:'engine.md',mimeType:'text/markdown',buffer:Buffer.from('# Engine')},{name:'engine.svg',mimeType:'image/svg+xml',buffer:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="green"/></svg>')}]);
   const editor=page.getByRole('textbox',{name:'Markdown 源代码编辑区'});
@@ -106,7 +142,13 @@ test('dialect switching, local image projects and page-bottom notes across engin
   const notes='---\nfootnotes: page-bottom\n---\nBody[^1]\n\n![Engine](engine.svg)\n\n[^1]: Bottom note';
   await editor.fill(notes);
   await expect(page.locator('.pdf-page-notes')).toContainText('Bottom note');
-  await page.getByRole('button',{name:'项目库',exact:true}).click();await page.getByLabel('项目名称').fill('Engine project');
+  await page.getByRole('button',{name:'项目库',exact:true}).click();
+  const projectName = page.getByLabel('项目名称');
+  // Cover native keyboard entry in WebKit and bulk input in the other engines.
+  if (browserName === 'webkit') {
+    await projectName.press('ControlOrMeta+A'); await projectName.pressSequentially('Engine project');
+  } else await projectName.fill('Engine project');
+  await expect(projectName).toHaveValue('Engine project');
   await page.getByRole('button',{name:'保存当前项目',exact:true}).click();
   await expect(page.getByRole('button',{name:'打开 Engine project',exact:true})).toBeVisible();
   await page.reload();await expect(editor).toHaveValue(notes);

@@ -25,6 +25,11 @@ import { ProjectLibrary } from './ProjectLibrary';
 import { pageSize } from './page-size';
 import { FontSettings } from './FontSettings';
 import { activeFont } from './fonts';
+import { ImageAssets } from './ImageAssets';
+import { imageMarkdown, prepareImageAssets } from './image-assets';
+import { PageSelection } from './PageSelection';
+import { pageChapters, selectPageIndices, type ExportScope } from './page-selection';
+import { DocumentProperties } from './DocumentProperties';
 
 type UploadedMarkdownFile = {
   name: string;
@@ -81,6 +86,8 @@ function App() {
   const [draftStatus, setDraftStatus] = useState(initialDraft ? '已恢复本地草稿；本地图片需重新上传。' : '');
   const [draftEnabled, setDraftEnabled] = useState(true);
   const [showProjects, setShowProjects] = useState(false);
+  const [showAssets, setShowAssets] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
   const [activeProject, setActiveProject] = useState<{ id: string; name: string }>();
   const [projectReady, setProjectReady] = useState(false);
   const assetBlobs = useRef<Record<string, Blob>>({});
@@ -95,6 +102,8 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [pages, setPages] = useState<string[]>([]);
   const [previewMeta, setPreviewMeta] = useState<DocumentMeta>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [exportScope, setExportScope] = useState<ExportScope>({ mode: 'all', range: '', chapter: '' });
   const [exportMode, setExportMode] = useState<'print' | 'image' | 'direct'>('print');
   const [fontRevision, setFontRevision] = useState(0);
   const [workspaceView, setWorkspaceView] = useState('editor');
@@ -126,6 +135,11 @@ function App() {
     return () => { window.removeEventListener('offline-ready', ready); window.removeEventListener('online', network); window.removeEventListener('offline', network); window.removeEventListener('offline-update', updated); };
   }, []);
   const warnings = useMemo(() => locatedWarnings(pages), [pages]);
+  const chapters = useMemo(() => pageChapters(pages, previewMeta.chapterLevel), [pages, previewMeta.chapterLevel]);
+  const selectedPages = useMemo(() => {
+    try { return { indices: selectPageIndices(exportScope, pages.length, currentPage, chapters), error: '' }; }
+    catch (error) { return { indices: [], error: error instanceof Error ? error.message : '导出页码无效。' }; }
+  }, [exportScope, pages.length, currentPage, chapters]);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const assetUrlsRef = useRef<AssetUrls>({});
@@ -161,7 +175,7 @@ function App() {
 
   const canDownload =
     !isDownloading && !isUploading && !isRendering &&
-    ((mode === 'single' && source.trim().length > 0 && pages.length > 0) ||
+    ((mode === 'single' && source.trim().length > 0 && selectedPages.indices.length > 0 && !selectedPages.error) ||
       (mode === 'batch' && batchFiles.length > 0));
   const downloadLabel = exportMode === 'print' && mode === 'single' ? '打印／保存 PDF' : '下载';
 
@@ -175,6 +189,7 @@ function App() {
   }, [source, singleFileName, singleFilePath, mode, draftEnabled,activeProject]);
   useEffect(() => {
     if (!projectReady || !activeProject || mode !== 'single' || !draftEnabled) return;
+    setDraftStatus('正在保存项目与图片…');
     const controller=new AbortController();
     const timer = setTimeout(() => {
       void saveProject(currentProject(activeProject.id, activeProject.name),controller.signal).then(() => {if(!controller.signal.aborted)setDraftStatus('项目与图片已保存在此浏览器');})
@@ -193,6 +208,7 @@ function App() {
     setSource(project.source); setSingleFileName(record.name.endsWith('.md') ? record.name : `${record.name}.md`); setSingleFilePath(project.path);
     const restored=normalizeSettings(project.preferences);
     setPreferences(restored); setSettingsSaved(saveSettings(restored)); setMode('single'); setBatchFiles([]); setDraftEnabled(true);
+    setExportScope({ mode: 'all', range: '', chapter: '' }); setCurrentPage(1);
     setActiveProject({ id: record.id, name: record.name });
     try { localStorage.setItem(ACTIVE_PROJECT, record.id); } catch { /* Manual project opening still works. */ }
     setDraftStatus('已恢复本地项目与图片');
@@ -249,6 +265,7 @@ function App() {
     if (!panel) return;
 
     const updateScale = () => {
+      if (!panel.clientWidth || !panel.getClientRects().length) return;
       const availableWidth = panel.clientWidth - 40;
       const width=Math.max(pageDimensions(previewMeta).width,...pages.map(html=>pageSize(html,previewMeta).width));
       setPreviewScale(Math.min(1, Math.max(0.15, availableWidth / (width / 25.4 * 96))));
@@ -271,9 +288,31 @@ function App() {
     clearPreviewCache();
     const previousUrls = Object.values(assetUrlsRef.current);
     // In-flight rendering may still be decoding the previous document's images.
-    window.setTimeout(() => previousUrls.forEach((url) => URL.revokeObjectURL(url)), 12000);
+    const kept = new Set(Object.values(nextAssetUrls));
+    window.setTimeout(() => previousUrls.filter(url => !kept.has(url)).forEach((url) => URL.revokeObjectURL(url)), 12000);
     assetUrlsRef.current = nextAssetUrls;
     setAssetUrls(nextAssetUrls);
+  }
+
+  async function addImages(files: File[], replacePath?: string): Promise<string[]> {
+    const prepared = prepareImageAssets(assetBlobs.current, files, singleFilePath, replacePath);
+    if (Object.values(prepared.assets).reduce((size, blob) => size + blob.size, source.length * 2) > 100 * 1048576) {
+      throw new Error('文档与图片超过 100MiB，请减少图片。');
+    }
+    const previous = assetBlobs.current;
+    const urls = Object.fromEntries(Object.entries(prepared.assets).map(([path, blob]) => {
+      const key = path.toLowerCase();
+      return [key, previous[path] === blob && assetUrlsRef.current[key] ? assetUrlsRef.current[key] : URL.createObjectURL(blob)];
+    }));
+    recoveryEdit.current = true; setDraftEnabled(true); setDraftStatus('正在保存项目与图片…');
+    assetBlobs.current = prepared.assets; replaceAssetUrls(urls);
+    // Pasted images should survive a reload together with the document.
+    if (!activeProject) {
+      const project = { id: crypto.randomUUID(), name: singleFileName || '我的文档' };
+      setActiveProject(project);
+      try { localStorage.setItem(ACTIVE_PROJECT, project.id); } catch { /* Project library remains available. */ }
+    }
+    return prepared.markdown;
   }
 
   function createAssetUrls(files: File[]) {
@@ -308,6 +347,7 @@ function App() {
     setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ }
     replaceAssetUrls(nextAssetUrls);
     setDraftEnabled(true);
+    setExportScope({ mode: 'all', range: '', chapter: '' }); setCurrentPage(1);
 
     if (loadedFiles.length === 1) {
       setMode('single');
@@ -333,8 +373,11 @@ function App() {
     setOperationError('');
     try {
       const loadedFiles = await readMarkdownFiles(selectedFiles);
-      if (loadedFiles.length === 0) throw new Error('所选内容中没有 Markdown 或文本文件。');
-      applyLoadedMarkdownFiles(loadedFiles, createAssetUrls(selectedFiles));
+      if (loadedFiles.length === 0) {
+        if (mode !== 'single') throw new Error('批量模式请同时选择 Markdown 或文本文件。');
+        if (!selectedFiles.every(isImageFile)) throw new Error('所选内容中没有 Markdown、文本文件或可用图片。');
+        await addImages(selectedFiles); setShowAssets(true);
+      } else applyLoadedMarkdownFiles(loadedFiles, createAssetUrls(selectedFiles));
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : '文件读取失败，请重试。');
     } finally {
@@ -351,6 +394,7 @@ function App() {
     setMode('single');
     setBatchFiles([]);
     setSource(value);
+    setDraftStatus(activeProject ? '正在保存项目与图片…' : '正在保存草稿…');
   }
 
   function handleBackToEditor() {
@@ -368,13 +412,14 @@ function App() {
   async function downloadSinglePdf() {
     setDownloadProgress(35);
     const filename = getPdfName(singleFileName);
+    const exportPages = selectedPages.indices.map(index => pages[index]);
     if (exportMode === 'print') {
-      await printPages(pages, previewMeta);
+      await printPages(exportPages, previewMeta);
       setExportStatus('打印对话框已打开：请选择另存为 PDF，关闭浏览器页眉页脚。');
       return;
     }
     if (exportMode === 'direct' && !activeFont()) throw new Error('请先在排版设置中导入包含正文字符的 TTF 字体。');
-    const blob = await renderImagePdf(pages, previewMeta, { searchable: exportMode === 'direct', quality: exportSettings.quality, signal: exportController.current?.signal, progress: (done, total) => {
+    const blob = await renderImagePdf(exportPages, previewMeta, { originalPages: pages, originalPageIndices: selectedPages.indices, searchable: exportMode === 'direct', quality: exportSettings.quality, signal: exportController.current?.signal, progress: (done, total) => {
       setDownloadProgress(Math.round(done / total * 85)); setExportStatus(`正在生成第 ${done} / ${total} 页`);
     } });
     exportController.current?.signal.throwIfAborted();
@@ -477,8 +522,10 @@ function App() {
       <header className="top-bar">
         <h1>Md2PDF</h1>
         <div className="actions">
-          <button type="button" disabled={isDownloading} onClick={() => setShowSettings(!showSettings)}>排版</button>
-          <button type="button" disabled={isDownloading || isUploading || !projectReady || mode === 'batch'} onClick={() => setShowProjects(!showProjects)}>项目库</button>
+          <button type="button" disabled={isDownloading} onClick={() => { setShowSettings(!showSettings); setShowAssets(false); setShowProperties(false); setShowProjects(false); }}>排版</button>
+          <button type="button" disabled={isDownloading || isUploading || mode === 'batch'} onClick={() => { setShowAssets(!showAssets); setShowProperties(false); setShowSettings(false); setShowProjects(false); }}>图片</button>
+          <button type="button" disabled={isDownloading || isUploading || mode === 'batch'} onClick={() => { setShowProperties(!showProperties); setShowAssets(false); setShowSettings(false); setShowProjects(false); }}>文档属性</button>
+          <button type="button" disabled={isDownloading || isUploading || !projectReady || mode === 'batch'} onClick={() => { setShowProjects(!showProjects); setShowAssets(false); setShowProperties(false); setShowSettings(false); }}>项目库</button>
           <select aria-label="PDF 导出方式" value={mode === 'batch' ? 'image' : exportMode} disabled={isDownloading || mode === 'batch'} onChange={(event) => setExportMode(event.target.value as 'print' | 'image' | 'direct')}>
             <option value="print">可搜索 PDF（打印保存）</option>
             <option value="image">图像 PDF</option>
@@ -526,6 +573,11 @@ function App() {
       {exportStatus ? <div className="export-status" role="status">{exportStatus}</div> : null}
       {isDownloading && (mode === 'batch' || exportMode !== 'print') ? <button type="button" onClick={() => exportController.current?.abort()}>取消导出</button> : null}
       {operationError ? <div className="operation-error" role="alert">{operationError}</div> : null}
+      {showAssets ? <ImageAssets assets={assetUrls} disabled={isDownloading || isUploading}
+        add={async files => { await addImages(files); }} replace={async (path, file) => { await addImages([file], path); }}
+        insert={path => window.dispatchEvent(new CustomEvent('editor-insert', { detail: imageMarkdown(path, singleFilePath) }))}
+        close={() => setShowAssets(false)} /> : null}
+      {showProperties ? <DocumentProperties source={source} change={handleSourceChange} disabled={isDownloading || isUploading} close={() => setShowProperties(false)} /> : null}
       {showProjects ? <ProjectLibrary disabled={isDownloading || isUploading} save={saveCurrentProject} open={applyProject} close={() => setShowProjects(false)}
         exportFile={async () => { await downloadBlob(await exportProject(currentProject()), 'md2pdf-project.zip'); }}
         importFile={async (file) => { const project = await importProject(file); await saveProject(project); applyProject({ ...project, history: [] }); }} /> : null}
@@ -551,6 +603,7 @@ function App() {
             <button aria-pressed={workspaceView === 'preview'} onClick={() => setWorkspaceView('preview')}>预览</button>
           </div>
           <Editor source={source} change={handleSourceChange} disabled={isDownloading || isUploading} panel={previewPanelRef.current}
+            images={addImages}
             draftStatus={draftStatus} clear={() => { if (clearDraft()) { setDraftEnabled(false); setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ } setDraftStatus('已清除保存的草稿；项目库中的项目仍保留，继续编辑会重新保存。'); } else setDraftStatus('无法清除草稿。'); }}
             download={() => { void downloadBlob(new Blob([source], { type: 'text/markdown;charset=utf-8' }), (singleFileName || 'document.md').replace(/\.(markdown|txt)$/i, '.md')); }} />
           <section
@@ -564,9 +617,11 @@ function App() {
               <div className="preview-error">{previewErrorMessage}</div>
             ) : null}
             {warnings.length ? <details className="document-warnings"><summary>文档提示（{warnings.length}）</summary><ul>{warnings.map((warning,index) => <li key={index}>{warning.line ? <button onClick={() => navigateToSource({line:warning.line!,end:warning.end || warning.line!})}>第 {warning.line} 行：{warning.message}</button> : warning.message}</li>)}</ul></details> : null}
+            <PageSelection value={exportScope} change={setExportScope} chapters={chapters} total={pages.length} currentPage={Math.min(currentPage, Math.max(1, pages.length))}
+              count={selectedPages.indices.length} error={selectedPages.error} disabled={isDownloading || isRendering} />
             {exportMode === 'print' ? <p className="print-guide">打印时选择“另存为 PDF”、文档纸张尺寸，并关闭浏览器页眉页脚。</p> : null}
             {exportMode === 'direct' ? <p className="print-guide">实验：图像页面叠加可搜索正文，需要导入 TTF 字体。公式、图表保持图像；emoji、扩展区汉字和矢量输出请使用打印保存。</p> : null}
-            <PagePreview pages={pages} meta={previewMeta} scale={previewScale} panel={previewPanelRef.current} />
+            <PagePreview pages={pages} meta={previewMeta} scale={previewScale} panel={previewPanelRef.current} currentPageChanged={setCurrentPage} />
           </section>
         </section>
       )}

@@ -4,6 +4,9 @@ import { attachPageNotes, commitPageNotes, extractPageNotes, reservePageNotes, t
 import { numberDocumentFigures } from './document-structure';
 
 type PageState = { page: HTMLElement; content: HTMLElement; meta: DocumentMeta; host?: HTMLElement; signal?: AbortSignal; notes?: NoteContext };
+type TableContext = { wrap: (table: HTMLTableElement) => HTMLElement };
+const CONTEXT_ATTRIBUTE = 'data-pagination-context';
+let nextContext = 0;
 
 let lastYield = 0;
 async function yieldLayout(signal?: AbortSignal) {
@@ -187,10 +190,29 @@ function addTocPageNumbers(pages: string[]) {
 
 function finalizePages(pages: string[], meta: DocumentMeta) {
   const pagesWithTocNumbers = meta.tocPageNumbers === false ? pages : addTocPageNumbers(pages);
+  const ids = new Set<string>();
+  const listItems = new Set<string>();
 
   return pagesWithTocNumbers.map((page, index) => {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = page;
+    wrapper.querySelectorAll<HTMLElement>(`[${CONTEXT_ATTRIBUTE}]`).forEach(element => {
+      const key = element.getAttribute(CONTEXT_ATTRIBUTE)!;
+      if (element instanceof HTMLOListElement) {
+        const first = element.querySelector<HTMLElement>(':scope > li');
+        const number = first?.getAttribute(CONTEXT_ATTRIBUTE)?.split(':')[1];
+        if (number !== undefined) element.start = Number(number);
+      }
+      if (element.tagName === 'LI') {
+        if (listItems.has(key)) element.classList.add('list-item-continuation');
+        listItems.add(key);
+      }
+      element.removeAttribute(CONTEXT_ATTRIBUTE);
+    });
+    wrapper.querySelectorAll('[id]').forEach(element => {
+      if (ids.has(element.id)) element.removeAttribute('id');
+      else ids.add(element.id);
+    });
     wrapper.querySelectorAll<HTMLElement>('.pdf-page-header, .pdf-page-footer').forEach((element) => {
       element.textContent = expandPageTemplate(element.dataset.template ?? '', meta, String(index + 1), String(pagesWithTocNumbers.length));
       delete element.dataset.template;
@@ -205,39 +227,167 @@ function finalizePages(pages: string[], meta: DocumentMeta) {
   });
 }
 
+function contextTitle(element: HTMLElement) {
+  if (element.tagName === 'DETAILS') return element.querySelector<HTMLElement>(':scope > summary');
+  if (element.matches('.md-alert, .md-container')) return element.querySelector<HTMLElement>(':scope > strong');
+  return null;
+}
+
+function listOrdinal(list: HTMLOListElement, item: Element) {
+  const children = Array.from(list.children).filter(child => child.tagName === 'LI');
+  let number = list.hasAttribute('start') ? list.start : list.reversed ? children.length : 1;
+  for (const child of children) {
+    if (child.hasAttribute('value')) number = Number(child.getAttribute('value'));
+    if (child === item) return number;
+    number += list.reversed ? -1 : 1;
+  }
+  return number;
+}
+
+// Adjacent pieces of one source block share their wrappers on the same page.
+// Record moves so a failed fit can restore the incoming fragment before splitting.
+function mountFragment(fragment: HTMLElement, content: HTMLElement) {
+  const previous = content.lastElementChild as HTMLElement | null;
+  const key = fragment.getAttribute(CONTEXT_ATTRIBUTE);
+  if (!key || previous?.getAttribute(CONTEXT_ATTRIBUTE) !== key) {
+    content.appendChild(fragment);
+    return { root: fragment, remove: () => fragment.remove() };
+  }
+  const moves: { node: Node; parent: Node; next: Node | null }[] = [];
+  const merge = (target: HTMLElement, incoming: HTMLElement) => {
+    const title = contextTitle(incoming);
+    for (const child of Array.from(incoming.childNodes)) {
+      if (child === title && contextTitle(target)) continue;
+      const last = target.lastElementChild as HTMLElement | null;
+      const childKey = child instanceof HTMLElement ? child.getAttribute(CONTEXT_ATTRIBUTE) : null;
+      if (childKey && last?.getAttribute(CONTEXT_ATTRIBUTE) === childKey) merge(last, child as HTMLElement);
+      else {
+        moves.push({ node: child, parent: incoming, next: child.nextSibling });
+        target.appendChild(child);
+      }
+    }
+  };
+  merge(previous, fragment);
+  return { root: previous, remove: () => {
+    for (const move of moves.reverse()) move.parent.insertBefore(move.node, move.next?.parentNode === move.parent ? move.next : null);
+  } };
+}
+
 async function appendNodeToPages(
   node: Element,
   pages: string[],
   state: PageState,
 ) {
+  if (node instanceof HTMLElement && node.querySelector('table')) return appendNestedTables(node, pages, state);
   let clone = node.cloneNode(true) as HTMLElement;
-  state.content.appendChild(clone);
-  fitWideMath(clone);
+  let mounted = mountFragment(clone, state.content);
+  fitWideMath(mounted.root);
 
   if (!isOverflowing(state.content)) {
     return state;
   }
 
-  clone.remove();
+  mounted.remove();
   const last = state.content.lastElementChild;
   const orphanHeading = last && /^H[1-6]$/.test(last.tagName) ? last : null;
   orphanHeading?.remove();
   state = startNewPageIfNeeded(pages, state);
   if (orphanHeading) state.content.appendChild(orphanHeading);
-  state.content.appendChild(clone);
+  mounted = mountFragment(clone, state.content);
   while (isOverflowing(state.content)) {
     await yieldLayout(state.signal);
-    clone.remove();
+    mounted.remove();
     const split = splitToFit(clone, state.content);
     if (!split) {
       fitAtomicNode(clone, state.content);
       return state;
     }
-    state.content.appendChild(split.head);
+    mountFragment(split.head, state.content);
     state = startNewPageIfNeeded(pages, state);
     clone = split.tail;
-    state.content.appendChild(clone);
+    mounted = mountFragment(clone, state.content);
   }
+  return state;
+}
+
+async function appendNestedTables(node: HTMLElement, pages: string[], state: PageState) {
+  const tables = Array.from(node.querySelectorAll<HTMLTableElement>('table')).filter(table => !table.parentElement?.closest('table'));
+  if (!tables.length) return state;
+  const originals = new Map<string, HTMLElement>();
+  const identify = (element: HTMLElement) => {
+    if (element.hasAttribute(CONTEXT_ATTRIBUTE)) return;
+    const list = element.tagName === 'LI' && element.parentElement instanceof HTMLOListElement ? element.parentElement : null;
+    const key = String(nextContext++) + (list ? `:${listOrdinal(list, element)}` : '');
+    element.setAttribute(CONTEXT_ATTRIBUTE, key); originals.set(key, element);
+  };
+  identify(node);
+  node.querySelectorAll<HTMLElement>('ol, li').forEach(identify);
+  for (const table of tables) {
+    for (let ancestor = table.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      identify(ancestor); if (ancestor === node) break;
+    }
+  }
+  const restoreContext = (fragment: HTMLElement) => {
+    for (const element of [fragment, ...fragment.querySelectorAll<HTMLElement>(`[${CONTEXT_ATTRIBUTE}]`)]) {
+      const original = originals.get(element.getAttribute(CONTEXT_ATTRIBUTE) || '');
+      if (!original) continue;
+      const title = contextTitle(original);
+      if (title && !contextTitle(element)) element.prepend(title.cloneNode(true));
+      if (element instanceof HTMLOListElement) {
+        const first = element.querySelector<HTMLElement>(':scope > li');
+        const source = first && originals.get(first.getAttribute(CONTEXT_ATTRIBUTE) || '');
+        if (source) element.start = listOrdinal(original as HTMLOListElement, source);
+      }
+    }
+    restoreCalloutSummaries(node, fragment);
+  };
+  const hasBody = (fragment: HTMLElement) => {
+    if (fragment.querySelector('img,svg,table,hr,pre,input[type="checkbox"]')) return true;
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!walker.currentNode.textContent?.trim()) continue;
+      const parent = walker.currentNode.parentElement;
+      if (parent?.closest('summary')) continue;
+      const strong = parent?.closest<HTMLElement>('.md-alert > strong, .md-container > strong');
+      if (strong && strong === contextTitle(strong.parentElement!)) continue;
+      return true;
+    }
+    return false;
+  };
+  let previous: HTMLTableElement | undefined;
+  const appendPart = async (end?: HTMLTableElement) => {
+    const range = document.createRange();
+    if (previous) range.setStartAfter(previous); else range.setStart(node, 0);
+    if (end) range.setEndBefore(end); else range.setEnd(node, node.childNodes.length);
+    const part = node.cloneNode(false) as HTMLElement; part.append(range.cloneContents());
+    restoreContext(part);
+    if (hasBody(part)) state = await appendNodeToPages(part, pages, state);
+  };
+  for (const table of tables) {
+    await yieldLayout(state.signal);
+    await appendPart(table);
+    const ancestors: HTMLElement[] = [];
+    for (let ancestor = table.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      ancestors.push(ancestor); if (ancestor === node) break;
+    }
+    const context: TableContext = { wrap: shell => {
+      let fragment: HTMLElement = shell;
+      for (const ancestor of ancestors) {
+        const parent = ancestor.cloneNode(false) as HTMLElement; parent.append(fragment); fragment = parent;
+      }
+      restoreContext(fragment);
+      return fragment;
+    } };
+    if (shouldUseWideTable(table, state, context)) {
+      const meta = state.meta;
+      state = startNewPageIfNeeded(pages, state); state.page.remove();
+      state = createPage({ ...meta, orientation: 'landscape' }, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
+      state = await appendTableToPages(table, pages, state, context); appendPage(pages, state);
+      state = createPage(meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
+    } else state = await appendTableToPages(table, pages, state, context);
+    previous = table;
+  }
+  await appendPart();
   return state;
 }
 
@@ -422,100 +572,37 @@ function shouldStartChapterOnNewPage(node: Element, state: PageState) {
   return /^H[1-6]$/.test(node.tagName) && level <= maxLevel;
 }
 
-function createTableShell(table: HTMLTableElement) {
+function shouldUseWideTable(table: HTMLTableElement, state: PageState, context?: TableContext) {
+  if (!state.meta.wideTables || state.meta.orientation === 'landscape') return false;
+  if (table.querySelectorAll(':scope > thead > tr:first-child > th').length >= 8) return true;
+  // Percentage widths must be measured inside the page's padding and ancestor
+  // wrappers. Their wider source-host width does not make a table intrinsically wide.
+  const clone = table.cloneNode(true) as HTMLTableElement;
+  const fragment = context?.wrap(clone) ?? clone;
+  state.content.append(fragment);
+  const style = getComputedStyle(state.content);
+  const width = state.content.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const wide = clone.scrollWidth > clone.clientWidth + 1 || clone.getBoundingClientRect().width > width + 1;
+  fragment.remove();
+  return wide;
+}
+
+function createTableShell(table: HTMLTableElement, context?: TableContext) {
   const tableClone = table.cloneNode(false) as HTMLTableElement;
   table.querySelectorAll(':scope > caption, :scope > colgroup, :scope > thead').forEach((child) => tableClone.appendChild(child.cloneNode(true)));
 
   const tbody = document.createElement('tbody');
   tableClone.appendChild(tbody);
 
-  return { table: tableClone, tbody };
+  return { table: tableClone, tbody, root: context?.wrap(tableClone) ?? tableClone };
 }
 
 async function appendTableToPages(
   table: HTMLTableElement,
   pages: string[],
   state: PageState,
+  context?: TableContext,
 ) {
-  if (table.querySelector('[rowspan]:not([rowspan="1"])')) {
-    return appendMergedTable(table, pages, state);
-  }
-  const headerRows = new Set(
-    Array.from(table.querySelectorAll(':scope > thead > tr')) as HTMLTableRowElement[],
-  );
-  const rows = (Array.from(table.querySelectorAll(':scope > tr, :scope > tbody > tr, :scope > tfoot > tr')) as HTMLTableRowElement[])
-    .filter((row) => !headerRows.has(row));
-
-  if (rows.length === 0) {
-    return appendNodeToPages(table, pages, state);
-  }
-
-  let tableState = createTableShell(table);
-  state.content.appendChild(tableState.table);
-  let tableScaled = false;
-
-  for (const [rowIndex, row] of rows.entries()) {
-    state.signal?.throwIfAborted();
-    if (rowIndex % 12 === 0) await yieldLayout(state.signal);
-    if (tableScaled) {
-      state = startNewPageIfNeeded(pages, state);
-      tableState = createTableShell(table);
-      state.content.appendChild(tableState.table);
-      tableScaled = false;
-    }
-    const rowClone = row.cloneNode(true) as HTMLTableRowElement;
-    tableState.tbody.appendChild(rowClone);
-
-    if (
-      isOverflowing(state.content) &&
-      tableState.tbody.children.length === 1 &&
-      state.content.children.length > 1
-    ) {
-      tableState.table.remove();
-      appendPage(pages, state);
-
-      state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
-      table.parentElement?.parentElement?.appendChild(state.page);
-      tableState = createTableShell(table);
-      state.content.appendChild(tableState.table);
-      tableState.tbody.appendChild(row.cloneNode(true));
-      if (isOverflowing(state.content)) {
-        tableState.table.remove();
-        state = await appendTallRow(row, table, pages, state);
-        tableScaled = true;
-      }
-      continue;
-    }
-
-    if (!isOverflowing(state.content)) {
-      continue;
-    }
-    if (tableState.tbody.children.length === 1) {
-      tableState.table.remove();
-      state = await appendTallRow(row, table, pages, state);
-      tableScaled = true;
-      continue;
-    }
-
-    rowClone.remove();
-    appendPage(pages, state);
-
-    state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
-    table.parentElement?.parentElement?.appendChild(state.page);
-    tableState = createTableShell(table);
-    state.content.appendChild(tableState.table);
-    tableState.tbody.appendChild(row.cloneNode(true));
-    if (isOverflowing(state.content)) {
-      tableState.table.remove();
-      state = await appendTallRow(row, table, pages, state);
-      tableScaled = true;
-    }
-  }
-
-  return state;
-}
-
-async function appendMergedTable(table: HTMLTableElement, pages: string[], state: PageState) {
   const groups: HTMLTableRowElement[][] = [];
   for (const body of table.querySelectorAll(':scope > tbody, :scope > tfoot')) {
     const rows = Array.from(body.querySelectorAll(':scope > tr')) as HTMLTableRowElement[];
@@ -530,40 +617,57 @@ async function appendMergedTable(table: HTMLTableElement, pages: string[], state
       groups.push(rows.slice(start, end + 1)); start = end + 1;
     }
   }
-  if (!groups.length) return appendNodeToPages(table, pages, state);
-  let shell = createTableShell(table); state.content.appendChild(shell.table);
+  if (!groups.length) {
+    const clone = table.cloneNode(true) as HTMLTableElement;
+    const fragment = context?.wrap(clone) ?? clone;
+    const mounted = mountFragment(fragment, state.content);
+    if (isOverflowing(state.content)) {
+      mounted.remove(); state = startNewPageIfNeeded(pages, state);
+      mountFragment(fragment, state.content);
+      if (isOverflowing(state.content)) { fragment.remove(); fitAtomicNode(fragment, state.content); }
+    }
+    return state;
+  }
+  let shell = createTableShell(table, context);
+  let mounted = mountFragment(shell.root, state.content);
+  let restart = false;
   for (const group of groups) {
     await yieldLayout(state.signal);
+    if (restart) {
+      state = startNewPageIfNeeded(pages, state);
+      shell = createTableShell(table, context); mounted = mountFragment(shell.root, state.content); restart = false;
+    }
     let clones = group.map((row) => row.cloneNode(true) as HTMLElement);
     clones.forEach((row) => shell.tbody.appendChild(row));
     if (!isOverflowing(state.content)) continue;
     clones.forEach((row) => row.remove());
-    if (!shell.tbody.children.length) shell.table.remove();
+    if (!shell.tbody.children.length) mounted.remove();
     state = startNewPageIfNeeded(pages, state);
-    shell = createTableShell(table); state.content.appendChild(shell.table);
+    shell = createTableShell(table, context); mounted = mountFragment(shell.root, state.content);
     clones = group.map((row) => row.cloneNode(true) as HTMLElement);
     clones.forEach((row) => shell.tbody.appendChild(row));
     if (isOverflowing(state.content)) {
-      shell.table.remove(); fitAtomicNode(shell.table, state.content);
-      appendPage(pages, state); state = createPage(state.meta, 'pdf-page pdf-page-measure', state.host, state.signal, state.notes);
-      shell = createTableShell(table); state.content.appendChild(shell.table);
+      mounted.remove();
+      if (group.length === 1 && Array.from(group[0].cells).every(cell => cell.rowSpan === 1)) {
+        state = await appendTallRow(group[0], table, pages, state, context);
+      } else fitAtomicNode(shell.root, state.content);
+      restart = true;
     }
   }
-  if (!shell.tbody.children.length) shell.table.remove();
   return state;
 }
 
-async function appendTallRow(row: HTMLTableRowElement, table: HTMLTableElement, pages: string[], state: PageState) {
+async function appendTallRow(row: HTMLTableRowElement, table: HTMLTableElement, pages: string[], state: PageState, context?: TableContext) {
   let remaining = row.cloneNode(true) as HTMLTableRowElement;
   for (;;) {
     await yieldLayout(state.signal);
-    const shell = createTableShell(table);
+    const shell = createTableShell(table, context);
     const head = remaining.cloneNode(false) as HTMLTableRowElement;
     const tail = remaining.cloneNode(false) as HTMLTableRowElement;
     const cells = Array.from(remaining.cells);
     cells.forEach((cell) => head.appendChild(cell.cloneNode(false)));
     shell.tbody.appendChild(head);
-    state.content.appendChild(shell.table);
+    const mounted = mountFragment(shell.root, state.content);
     let progressed = false;
     let more = false;
     for (const [index, cell] of cells.entries()) {
@@ -593,10 +697,10 @@ async function appendTallRow(row: HTMLTableRowElement, table: HTMLTableElement, 
       more ||= !!split.tail.textContent?.trim() || split.tail.children.length > 0;
     }
     if (!progressed) {
-      shell.table.remove();
-      const fallback = createTableShell(table);
+      mounted.remove();
+      const fallback = createTableShell(table, context);
       fallback.tbody.appendChild(remaining);
-      fitAtomicNode(fallback.table, state.content);
+      fitAtomicNode(fallback.root, state.content);
       return state;
     }
     if (!more) return state;
@@ -618,6 +722,7 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
   for (const [name, value] of Object.entries(layoutVariables(meta))) source.style.setProperty(name, value);
   host.style.width = layoutVariables(meta)['--pdf-page-width'];
   source.innerHTML = html;
+  source.querySelectorAll(`[${CONTEXT_ATTRIBUTE}]`).forEach(element => element.removeAttribute(CONTEXT_ATTRIBUTE));
   // Measure and export complete callout bodies, including initially folded ones.
   // The preview restores the source's fold state without altering these pages.
   source.querySelectorAll<HTMLDetailsElement>('details.md-alert-foldable').forEach(callout => { callout.open = true; });
@@ -712,9 +817,7 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
         state = startNewPageIfNeeded(pages, state);
         state = await appendNodeToPages(node, pages, state);
       } else if (node instanceof HTMLTableElement) {
-        const contentWidth=state.content.clientWidth-parseFloat(getComputedStyle(state.content).paddingLeft)-parseFloat(getComputedStyle(state.content).paddingRight);
-        const tableWidth=node.getBoundingClientRect().width;
-        if(meta.wideTables && meta.orientation!=='landscape' && (node.scrollWidth>contentWidth+1 || tableWidth>contentWidth+1 || node.querySelectorAll('thead tr:first-child th').length>=8)) {
+        if(shouldUseWideTable(node, state)) {
           state=startNewPageIfNeeded(pages,state);
           state.page.remove();
           state=createPage({...meta,orientation:'landscape'},'pdf-page pdf-page-measure',host,signal,notes);

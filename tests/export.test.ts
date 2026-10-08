@@ -10,6 +10,7 @@ vi.mock('html2canvas', () => ({ default: async (_page: HTMLElement, options: Rec
   return { toDataURL: () => 'data:image/jpeg;base64,AA==', width: 10, height: 10 };
 } }));
 vi.mock('jspdf', () => ({ jsPDF: class {
+  setProperties() {} outline = { add: () => ({children:[]}) };
   addImage() {} addPage() {} link() {} output() { return new Blob(['pdf']); }
 } }));
 

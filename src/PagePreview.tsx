@@ -3,8 +3,8 @@ import type { DocumentMeta } from './markdown';
 import { pageSize } from './page-size';
 import { navigateToSource, sourceLocation } from './source-map';
 
-export function PagePreview({ pages, meta, scale, panel }: {
-  pages: string[]; meta: DocumentMeta; scale: number; panel: HTMLElement | null;
+export function PagePreview({ pages, meta, scale, panel, currentPageChanged }: {
+  pages: string[]; meta: DocumentMeta; scale: number; panel: HTMLElement | null; currentPageChanged?: (page: number) => void;
 }) {
   const sizes=pages.map(html=>pageSize(html,meta));
   const offsets:number[]=[];let total=0;
@@ -33,7 +33,10 @@ export function PagePreview({ pages, meta, scale, panel }: {
   }),[pages]);
   useEffect(() => {
     if (!panel) return;
-    const update = () => { setScroll(panel.scrollTop); setViewport(panel.clientHeight); };
+    const update = () => {
+      if (!panel.clientHeight || !panel.getClientRects().length) return;
+      setScroll(panel.scrollTop); setViewport(panel.clientHeight);
+    };
     panel.addEventListener('scroll', update, { passive: true });
     const observer = new ResizeObserver(update); observer.observe(panel); update();
     return () => { panel.removeEventListener('scroll', update); observer.disconnect(); };
@@ -61,6 +64,16 @@ export function PagePreview({ pages, meta, scale, panel }: {
   const last=offsets.findIndex(top=>top>scroll+viewport);
   const start=Math.max(0,(first<0?pages.length-1:first)-2);
   const end=Math.min(pages.length,(last<0?pages.length:last)+2);
+  useLayoutEffect(() => {
+    if (!panel || !host.current || !pages.length || !panel.clientHeight || !panel.getClientRects().length) return;
+    let largest = -1, page = 1;
+    Array.from(host.current.children).forEach((element, index) => {
+      const top = (element as HTMLElement).offsetTop - panel.offsetTop;
+      const visible = Math.max(0, Math.min(top + heights[index], scroll + viewport) - Math.max(top, scroll));
+      if (visible > largest) { largest = visible; page = index + 1; }
+    });
+    currentPageChanged?.(page);
+  }, [scroll, viewport, pages, scale, panel, currentPageChanged]);
   useLayoutEffect(() => {
     const callouts = Array.from(host.current?.querySelectorAll<HTMLDetailsElement>('details.md-alert-foldable[data-callout-key]') || []);
     const listeners: [HTMLDetailsElement, () => void][] = [];

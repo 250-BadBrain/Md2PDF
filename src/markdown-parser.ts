@@ -53,6 +53,8 @@ export type DocumentMeta = {
   lineHeight?: number;
   title?: string;
   author?: string;
+  subject?: string;
+  keywords?: string;
   date?: string;
   header?: string;
   footer?: string;
@@ -176,6 +178,8 @@ export function parseFrontMatter(markdownSource: string): { body: string; meta: 
     lineHeight: toNumberMetaValue(parsed.lineHeight) === undefined ? undefined : Math.min(2.4, Math.max(1.2, Number(parsed.lineHeight))),
     title: stringifyMetaValue(parsed.title),
     author: stringifyMetaValue(parsed.author),
+    subject: stringifyMetaValue(parsed.subject),
+    keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map(String).join(', ') : stringifyMetaValue(parsed.keywords),
     date: stringifyMetaValue(parsed.date),
     header: stringifyMetaValue(parsed.header),
     footer: stringifyMetaValue(parsed.footer),

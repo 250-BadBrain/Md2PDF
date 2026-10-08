@@ -25,7 +25,8 @@ test('complete Doocs example renders extensions, diagrams and images and survive
   await page.route('https://cdn-doocs.oss-cn-shenzhen.aliyuncs.com/**',route=>route.fulfill({contentType:'image/svg+xml',headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#528795"/></svg>'}));
   await page.goto('/');const source=await fs.readFile('tests/fixtures/doocs/example.md','utf8');
   await page.getByRole('textbox',{name:'Markdown 源代码编辑区'}).fill(source);
-  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy','false');
+  // The full fixture loads several diagram engines on its first cold render.
+  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy','false', {timeout:60000});
   const result=await page.evaluate(async source=>{
     const {renderMarkdownToHtml}=await import('/src/markdown.ts');const {paginateHtml}=await import('/src/pagination.ts');
     const document=await renderMarkdownToHtml(source,undefined,{});const pages=await paginateHtml(document.html);

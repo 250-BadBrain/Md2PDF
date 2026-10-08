@@ -5,6 +5,7 @@ import { QUALITY, type ExportQuality } from './export-settings';
 import { pageSize } from './page-size';
 import {fontFaceCss} from './fonts';
 import {addTextLayer} from './searchable-pdf';
+import {addPdfOutline} from './pdf-outline';
 
 function createPdfDocument(pages: string[], meta: DocumentMeta) {
   const host = document.createElement('div');
@@ -30,7 +31,7 @@ function createPdfDocument(pages: string[], meta: DocumentMeta) {
   return documentElement;
 }
 
-export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { searchable?:boolean; quality?: ExportQuality; signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
+export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, options: { searchable?:boolean; quality?: ExportQuality; originalPages?: string[]; originalPageIndices?: number[]; signal?: AbortSignal; progress?: (completed: number, total: number) => void } = {}) {
   let element: HTMLElement | undefined;
   let styleSnapshot: HTMLStyleElement | undefined;
 
@@ -57,7 +58,8 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       orientation: firstSize.width > firstSize.height ? 'landscape' : 'portrait',
       compress: true,
     });
-    const destinations = new Map<string, { pageNumber: number; top: number }>();
+    pdf.setProperties({title: meta.title || '', author: meta.author || '', subject: meta.subject || '', keywords: meta.keywords || '', creator: 'Md2PDF'});
+    const destinations = new Map<string, { pageNumber: number; top: number; magFactor: 'FitH' }>();
     // Measure one page at a time; retain only lightweight link metadata.
     for (const [index, html] of pages.entries()) {
       options.signal?.throwIfAborted();
@@ -65,10 +67,15 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       const page = element.querySelector<HTMLElement>('.pdf-page')!;
       await waitForImages(page, options.signal);
       const bounds = page.getBoundingClientRect();
+      const height = pageSize(html,meta).height;
       page.querySelectorAll<HTMLElement>('[id]').forEach((target) => {
         if (!destinations.has(target.id)) destinations.set(target.id, {
           pageNumber: index + 1,
-          top: (target.getBoundingClientRect().top - bounds.top) * pageSize(html,meta).height / bounds.height,
+          // jsPDF's XYZ destinations use the final page's height when written.
+          // FitH accepts a PDF point coordinate directly, so convert using the
+          // destination page's own height and preserve the actual anchor top.
+          top: (height - (target.getBoundingClientRect().top - bounds.top) * height / bounds.height) * 72 / 25.4,
+          magFactor: 'FitH',
         });
       });
       element.parentElement?.remove(); element = undefined;
@@ -121,8 +128,9 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       if(options.searchable)addTextLayer(pdf,pageElement,width,height);
       const bounds = pageElement.getBoundingClientRect();
       pageElement.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+        if (link.classList.contains('header-anchor')) return;
         const href = link.getAttribute('href') ?? '';
-        let options: { url: string } | { pageNumber: number; top: number } | undefined;
+        let options: { url: string } | { pageNumber: number; top: number; magFactor: 'FitH' } | undefined;
         if (href.startsWith('#')) {
           try { options = destinations.get(decodeURIComponent(href.slice(1))); } catch { return; }
         } else if (/^(https?:|mailto:|tel:)/i.test(href)) {
@@ -139,6 +147,8 @@ export async function renderImagePdf(pages: string[], meta: DocumentMeta = {}, o
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
 
+    options.signal?.throwIfAborted();
+    addPdfOutline(pdf, pages, options.originalPages ?? pages, options.originalPageIndices);
     return pdf.output('blob');
   } finally {
     element?.parentElement?.remove();
@@ -186,6 +196,13 @@ async function printHtml(pages: string[], meta: DocumentMeta) {
     const {width,height}=pageSize(html,meta);
     return `<article class="pdf-page" style="page:sheet${index};width:${width}mm;height:${height}mm">${html}</article>`;
   }).join('');
+  const destinations = new Set([...wrapper.querySelectorAll('[id]')].map(target => target.id));
+  for (const link of wrapper.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {
+    let id: string;
+    try { id = decodeURIComponent(link.getAttribute('href')!.slice(1)); }
+    catch { link.removeAttribute('href'); continue; }
+    if (!destinations.has(id)) link.removeAttribute('href');
+  }
   await Promise.all(Array.from(wrapper.querySelectorAll('img'), async (img) => {
     try { img.src = await dataUrl(img.src); }
     catch { throw new Error(`图片无法导出：${img.alt || img.src}，请使用本地图片或允许跨域的地址。`); }

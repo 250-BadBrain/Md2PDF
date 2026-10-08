@@ -146,7 +146,8 @@ test('oversized tables inside callouts preserve headers, spans and cell contents
       text:host.textContent,overflow:[...host.querySelectorAll<HTMLElement>('.pdf-content')].some(node=>node.scrollHeight>node.clientHeight+1)};
     host.remove();return result;
   });
-  expect(result).toMatchObject({tables:1,headers:1,rows:60,spans:30,math:30,overflow:false});
+  expect(result.tables).toBeGreaterThan(1); expect(result.headers).toBe(result.tables);
+  expect(result).toMatchObject({rows:60,spans:30,math:30,overflow:false});
   for(let i=0;i<30;i++){ expect(result.words).toContain(`Group-${i}`);expect(result.words).toContain(`Span-${i}`);expect(result.words).toContain(`Formula-${i}`); }
   expect(result.text).toContain('Before');expect(result.text).toContain('After');
 });

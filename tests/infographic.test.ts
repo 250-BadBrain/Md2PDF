@@ -32,6 +32,9 @@ vi.mock('@antv/infographic', async (importOriginal) => {
   };
 });
 
+// Initialize the partial mock and real parser during collection so each test
+// measures rendering and cleanup after the engine dependency is available.
+import '@antv/infographic';
 import { renderInfographic } from '../src/infographic';
 
 const source = `infographic list-row-horizontal-icon-arrow

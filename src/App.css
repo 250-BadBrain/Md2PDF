@@ -864,6 +864,27 @@ textarea {
 .editor-pane .editor { flex:1; min-height:0; height:auto; width:100%; }
 .editor-toolbar,.find-toolbar { display:flex; flex-wrap:wrap; gap:6px; padding:8px; background:#fff; font-size:12px; }
 .editor-toolbar button,.find-toolbar button { padding:5px 8px; border:1px solid #ccc; border-radius:4px; background:white; cursor:pointer; }
+.page-selection { padding: 10px 12px; margin-bottom: 12px; border: 1px solid #c8d1ca; border-radius: 6px; background: #f7f8f4; font-size: 12px; }
+.page-selection summary { cursor: pointer; font-weight: 600; }
+.page-selection-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.page-selection-fields label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.page-selection-fields input, .page-selection-fields select { max-width: 100%; min-width: 0; min-height: 32px; padding: 4px 7px; border: 1px solid #c8c8c2; border-radius: 4px; background: white; }
+.page-selection-fields input { width: 150px; }
+.page-selection p { margin: 10px 0 0; color: #66665f; line-height: 1.6; }
+.page-selection [role=alert], .image-assets [role=alert], .layout-settings [role=alert] { color: #983f35; }
+.image-assets { position: fixed; top: 64px; right: 16px; z-index: 10; width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 80px); overflow: auto; padding: 18px; border: 1px solid #c8c8c2; border-radius: 8px; background: white; box-shadow: 0 8px 30px #0002; }
+.image-assets p { font-size: 12px; line-height: 1.6; color: #66665f; }
+.image-assets fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.image-assets button { border: 1px solid #c8c8c2; border-radius: 4px; padding: 5px 9px; background: #f7f8f4; cursor: pointer; }
+.image-assets-list { display: flex; flex-direction: column; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.image-asset { display: grid; grid-template-columns: 72px 1fr 1fr; gap: 6px 10px; align-items: center; padding: 8px; border: 1px solid #deded8; border-radius: 6px; }
+.image-asset img { grid-row: span 2; width: 72px; height: 64px; object-fit: contain; border-radius: 4px; background: #f1f1eb; }
+.image-asset span { grid-column: 2 / 4; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+.document-properties fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.document-properties textarea { width: 100%; min-height: 72px; resize: vertical; border: 1px solid #c8c8c2; border-radius: 4px; padding: 6px 7px; }
+.editor-image-status { margin: 0; padding: 6px 12px; font-size: 12px; color: #365951; background: #eef5f2; }
+.editor-image-status[role=alert] { color: #983f35; background: #fff8f6; }
+@media (max-width: 1200px) { .top-bar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 6px; padding-top: 6px; padding-bottom: 6px; } .actions { flex-wrap: wrap; } }
 .find-toolbar input { width:130px; }
 .export-status,.document-warnings,.print-guide { padding:8px 12px; font-size:12px; color:#365951; background:#eef5f2; }
 .document-cover { min-height:210mm; display:flex; flex-direction:column; justify-content:center; text-align:center; }
