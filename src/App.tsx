@@ -343,6 +343,7 @@ function App() {
     nextAssetUrls: AssetUrls,
   ) {
     setBatchErrorMessage('');
+    setShowAssets(false); setShowProperties(false); setShowProjects(false);
     recoveryEdit.current = true;
     setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ }
     replaceAssetUrls(nextAssetUrls);
@@ -376,7 +377,7 @@ function App() {
       if (loadedFiles.length === 0) {
         if (mode !== 'single') throw new Error('批量模式请同时选择 Markdown 或文本文件。');
         if (!selectedFiles.every(isImageFile)) throw new Error('所选内容中没有 Markdown、文本文件或可用图片。');
-        await addImages(selectedFiles); setShowAssets(true);
+        await addImages(selectedFiles); setShowAssets(true); setShowProperties(false); setShowProjects(false); setShowSettings(false);
       } else applyLoadedMarkdownFiles(loadedFiles, createAssetUrls(selectedFiles));
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : '文件读取失败，请重试。');

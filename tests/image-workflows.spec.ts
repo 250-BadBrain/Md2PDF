@@ -94,3 +94,20 @@ test('asset uploads validate files, insertion uses the cursor, and ordinary text
   await expect(page.locator('.preview-panel img')).toHaveCount(1);
   await expect.poll(() => page.locator('.preview-panel img').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(100);
 });
+
+test('loading batch documents closes panels belonging to the previous document', async ({ page }) => {
+  for (const panel of ['图片', '文档属性']) {
+    await page.goto('/');
+    await page.getByRole('button', { name: panel, exact: true }).click();
+    await expect(page.getByRole('button', { name: `关闭${panel === '图片' ? '图片素材' : panel}`, exact: true })).toBeVisible();
+    await page.locator('header input[type=file]').first().setInputFiles([
+      { name: 'first.md', mimeType: 'text/markdown', buffer: Buffer.from('# First batch document') },
+      { name: 'second.md', mimeType: 'text/markdown', buffer: Buffer.from('# Second batch document') },
+    ]);
+    await expect(page.locator('.batch-message')).toBeVisible();
+    await expect(page.locator('.image-assets,.document-properties')).toHaveCount(0);
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: 'Markdown 源代码编辑区' })).toHaveValue('# First batch document');
+    await expect(page.locator('.image-assets,.document-properties')).toHaveCount(0);
+  }
+});

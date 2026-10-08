@@ -53,4 +53,4 @@
 - [x] PLAYWRIGHT_CHANNEL=msedge: all 84 local Chromium/WebKit browser tests passed, including unchanged visual checks and build-backed offline workflows for newly added features.
 - [x] Generate selected and nested-table PDFs, inspect PDF.js text/outlines/properties and render representative pages via Poppler for visual QA.
 - [x] Review diff, commit and push to existing remote main as authorized in this conversation.
-- [ ] Observe GitHub CI (including Firefox and Windows visual) and Cloudflare Pages, verify deployed build/assets and fresh browser workflow on https://md2pdf.lab.h2seo4.win/.
+- [x] Observe GitHub CI (including Firefox and Windows visual) and Cloudflare Pages, verify deployed build/assets and fresh browser workflow on https://md2pdf.lab.h2seo4.win/. Feature release dc4c3ac passed all 89 Linux browser checks and Windows visual checks; the subsequent upload-panel fix also has a regression that fails before the fix and passes afterwards.
