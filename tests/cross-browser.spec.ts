@@ -7,7 +7,8 @@ test('pasted images restore locally and selected downloads retain Unicode proper
   const editor = page.getByRole('textbox', { name: 'Markdown 源代码编辑区' });
   await editor.fill('# 第一章\n\n开头\n\n[pagebreak]\n\n## 第二章\n\n图片在下面\n\n');
   await editor.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
-  const png = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4gAAAABJRU5ErkJggg==', 'base64')];
+  // Valid 1×1 RGBA PNG: Firefox checks chunk CRCs more strictly than Chromium.
+  const png = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQTIr9DwADaAHgWDU+fQAAAABJRU5ErkJggg==', 'base64')];
   const pastedFiles = await editor.evaluate((element, bytes) => {
     const clipboard = new DataTransfer(); clipboard.items.add(new File([new Uint8Array(bytes)], '粘贴.png', { type: 'image/png' }));
     const paste = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard });
