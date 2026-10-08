@@ -52,5 +52,5 @@
 - [x] npm test (142 tests across 20 files, including 1,324 official corpus cases), npm run build.
 - [x] PLAYWRIGHT_CHANNEL=msedge: all 84 local Chromium/WebKit browser tests passed, including unchanged visual checks and build-backed offline workflows for newly added features.
 - [x] Generate selected and nested-table PDFs, inspect PDF.js text/outlines/properties and render representative pages via Poppler for visual QA.
-- [ ] Review diff, commit and push to existing remote main as authorized in this conversation.
+- [x] Review diff, commit and push to existing remote main as authorized in this conversation.
 - [ ] Observe GitHub CI (including Firefox and Windows visual) and Cloudflare Pages, verify deployed build/assets and fresh browser workflow on https://md2pdf.lab.h2seo4.win/.

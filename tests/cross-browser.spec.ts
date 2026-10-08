@@ -8,10 +8,17 @@ test('pasted images restore locally and selected downloads retain Unicode proper
   await editor.fill('# 第一章\n\n开头\n\n[pagebreak]\n\n## 第二章\n\n图片在下面\n\n');
   await editor.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(element.value.length, element.value.length));
   const png = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4gAAAABJRU5ErkJggg==', 'base64')];
-  await editor.evaluate((element, bytes) => {
+  const pastedFiles = await editor.evaluate((element, bytes) => {
     const clipboard = new DataTransfer(); clipboard.items.add(new File([new Uint8Array(bytes)], '粘贴.png', { type: 'image/png' }));
-    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }));
+    const paste = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard });
+    // Firefox ignores clipboardData in synthetic event construction (Mozilla
+    // bug 2027025). Supply the intended payload; native user paste is unaffected.
+    if (!paste.clipboardData?.files.length) Object.defineProperty(paste, 'clipboardData', { value: clipboard });
+    const count = paste.clipboardData!.files.length;
+    element.dispatchEvent(paste);
+    return count;
   }, png);
+  expect(pastedFiles).toBe(1);
   await expect(editor).toHaveValue(/images\/.*\.png/);
   await expect(page.getByText('项目与图片已保存在此浏览器', { exact: true })).toBeVisible();
   await page.reload();
