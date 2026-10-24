@@ -68,3 +68,25 @@ test('mobile preview controls remain separate after tab switching and expanding 
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('preview-mobile.png') });
 });
+
+test('replacing a long document clamps the jump target and keeps navigation usable', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('textbox', { name: 'Markdown 源代码编辑区' }).fill(source);
+  await expect(page.locator('.pdf-page-shell')).toHaveCount(20);
+  const target = page.getByLabel('跳转页码');
+  await target.fill('20');
+  await page.getByRole('button', { name: '跳转', exact: true }).click();
+  await expect(page.locator('[data-page="20"] h1')).toBeInViewport();
+
+  await page.locator('input[type=file]').first().setInputFiles({
+    name: 'short.md', mimeType: 'text/markdown',
+    buffer: Buffer.from('# First page\n\nBody\n\n[pagebreak]\n\n# Second page\n\nBody'),
+  });
+  await expect(page.locator('.pdf-page-shell')).toHaveCount(2);
+  await expect(page.locator('.preview-panel')).toHaveAttribute('aria-busy', 'false');
+  await expect(target).toHaveValue('2');
+  await page.locator('.preview-panel').evaluate(element => { element.scrollTop = 0; });
+  await expect(page.locator('[data-page="1"] h1')).toBeInViewport();
+  await page.getByRole('button', { name: '跳转', exact: true }).click();
+  await expect(page.locator('[data-page="2"] h1')).toBeInViewport();
+});

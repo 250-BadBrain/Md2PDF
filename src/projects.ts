@@ -20,14 +20,24 @@ function openDatabase(): Promise<IDBDatabase> {
     request.onblocked = () => reject(new Error('请关闭其他页面后重试本地数据库操作'));
   });
 }
-async function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore, done: (value: T) => void) => void): Promise<T> {
+async function transaction<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore, done: (value: T) => void) => void, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('projects', mode); let result: T;
-    tx.oncomplete = () => { db.close(); resolve(result); };
-    tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error('本地保存失败，可能空间不足')); };
+    let tx: IDBTransaction;
+    try { signal?.throwIfAborted(); tx = db.transaction('projects', mode); }
+    catch (error) { db.close(); reject(error); return; }
+    let result: T;
+    const cleanup = () => { signal?.removeEventListener('abort', abort); db.close(); };
+    const abort = () => {
+      try { tx.abort(); }
+      catch (error) { cleanup(); reject(signal?.reason ?? error); }
+    };
+    tx.oncomplete = () => { cleanup(); resolve(result); };
+    tx.onerror = tx.onabort = () => { cleanup(); reject(signal?.aborted ? signal.reason : tx.error || new Error('本地保存失败，可能空间不足')); };
+    signal?.addEventListener('abort', abort, { once: true });
     try { work(tx.objectStore('projects'), (value) => { result = value; }); }
-    catch (error) { tx.abort(); db.close(); reject(error); }
+    catch (error) { cleanup(); reject(error); abort(); }
   });
 }
 export const validProjectPath = (path: string) => path.length > 0 && path.length < 1024
@@ -67,9 +77,7 @@ export async function saveProject(project: Project, signal?: AbortSignal) {
   validateProject(project);
   const signature=await assetSignature(project.assets);
   const assets=await storeAssets(project.assets);
-  signal?.throwIfAborted();
   return transaction<void>('readwrite', (store, done) => {
-    signal?.throwIfAborted();
     const request = store.get(project.id);
     request.onsuccess = () => {
       const old = request.result as StoredRecord | undefined;
@@ -78,7 +86,7 @@ export async function saveProject(project: Project, signal?: AbortSignal) {
       const history = changed ? [{ ...old, history: undefined } as StoredProject, ...old.history].slice(0, 5) : old?.history || [];
       store.put({ ...project, assets, history, assetSignature:signature }); done();
     };
-  });
+  }, signal);
 }
 export async function loadProject(id: string) {
   const record=await transaction<StoredRecord | undefined>('readonly', (store, done) => { const request = store.get(id); request.onsuccess = () => done(request.result); });

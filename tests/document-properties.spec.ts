@@ -63,6 +63,30 @@ test('the document properties panel updates front matter and persists with the M
   await expect(editor).toHaveValue('---\ntitle: [invalid\n---\n# Keep');
 });
 
+test('document property save status expires when the source changes and returns after saving again', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByRole('textbox', { name: 'Markdown 源代码编辑区' });
+  await editor.fill('# Body');
+  await page.getByRole('button', { name: '文档属性', exact: true }).click();
+  const title = page.getByLabel('文档标题', { exact: true });
+  const save = page.getByRole('button', { name: '保存文档属性', exact: true });
+  const status = page.getByRole('status').filter({ hasText: '文档属性已保存' });
+  await title.fill('Saved title');
+  await save.click();
+  await expect(status).toBeVisible();
+
+  await editor.fill('---\ntitle: External title\n---\n# Updated body');
+  await expect(title).toHaveValue('External title');
+  await expect(status).toHaveCount(0);
+  await save.click();
+  await expect(status).toBeVisible();
+  await title.fill('Final title');
+  await expect(status).toHaveCount(0);
+  await save.click();
+  await expect(status).toBeVisible();
+  await expect.poll(() => editor.inputValue()).toContain('title: Final title');
+});
+
 test('partial print exports retain selected anchors and disable destinations outside the export', async ({page}) => {
   await page.goto('/');
   const result=await page.evaluate(async () => {

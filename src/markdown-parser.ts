@@ -210,10 +210,6 @@ function normalizeMargin(value: unknown) {
   return parts.join(' ');
 }
 
-export function humanizeContainerType(type: string) {
-  return type.charAt(0).toUpperCase() + type.slice(1);
-}
-
 function headingText(children: { type: string; content: string }[]) {
   return children.filter((child) =>
     ['text', 'code_inline', 'image', 'emoji', 'math_inline', 'doocs_ruby', 'doocs_wavy'].includes(child.type),

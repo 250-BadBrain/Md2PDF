@@ -1,14 +1,8 @@
 import type { jsPDF, OutlineItem } from 'jspdf';
+import { headingText } from './heading-text';
 
 export type PdfHeading = { key: string; id: string; level: number; title: string; pageNumber: number };
 export type PdfHeadingNode = PdfHeading & { children: PdfHeadingNode[] };
-
-function titleText(heading: HTMLElement) {
-  const clone = heading.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll('.header-anchor,.toc-page-number,rp,rt,.katex-mathml,script,style').forEach(node => node.remove());
-  clone.querySelectorAll('img').forEach(image => image.replaceWith(document.createTextNode(image.alt)));
-  return clone.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-}
 
 export function collectPdfHeadings(pages: string[], originalPages: string[] = pages, originalPageIndices?: number[]): PdfHeading[] {
   const headings: PdfHeading[] = [];
@@ -27,7 +21,7 @@ export function collectPdfHeadings(pages: string[], originalPages: string[] = pa
       const sourceLine = heading.dataset.sourceLine;
       const sourceKey = sourceLine ? `${level}:${sourceLine}` : '';
       if ((heading.id && ids.has(heading.id)) || (sourceKey && sourceLines.has(sourceKey))) continue;
-      const title = titleText(heading);
+      const title = headingText(heading);
       if (!title) continue;
       if (heading.id) ids.add(heading.id);
       if (sourceKey) sourceLines.add(sourceKey);

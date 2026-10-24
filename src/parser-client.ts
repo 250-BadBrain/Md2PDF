@@ -12,7 +12,8 @@ export async function parseWithWorker(request: ParseRequest, fallback: () => Pro
       worker.onmessage = ({ data }) => { cleanup(); data.error ? reject(new Error(data.error)) : resolve(data); };
       worker.onerror = () => { cleanup(); reject(new Error('Worker 不可用')); };
       signal?.addEventListener('abort', abort, { once: true });
-      worker.postMessage(request);
+      try { worker.postMessage(request); }
+      catch (error) { cleanup(); reject(error); }
     });
   } catch (error) {
     signal?.throwIfAborted();

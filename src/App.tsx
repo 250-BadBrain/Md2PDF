@@ -237,11 +237,9 @@ function App() {
       void buildPreview(source, singleFilePath, assetUrls, preferences, controller.signal)
         .then((document) => {
           if (cancelled) return;
-          if (!cancelled) {
-            setPages(document.pages);
-            setPreviewMeta(document.meta);
-            setIsRendering(false);
-          }
+          setPages(document.pages);
+          setPreviewMeta(document.meta);
+          setIsRendering(false);
         })
         .catch((error) => {
           if (!cancelled) {

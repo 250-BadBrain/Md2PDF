@@ -734,7 +734,10 @@ export async function paginateHtml(html: string, meta: DocumentMeta = {}, signal
       if (block.matches('.footnotes')) continue;
       const moved: { note: HTMLElement; index: number }[] = [];
       for (const reference of block.querySelectorAll<HTMLAnchorElement>('a.footnote-ref,.footnote-ref a[href]')) {
-        const id = decodeURIComponent(reference.hash.slice(1)); const definition = definitions.get(id);
+        let id: string;
+        try { id = decodeURIComponent(reference.hash.slice(1)); }
+        catch { continue; }
+        const definition = definitions.get(id);
         if (definition) { moved.push(definition); definitions.delete(id); }
       }
       if (moved.length) {

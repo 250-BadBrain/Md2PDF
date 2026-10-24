@@ -8,13 +8,18 @@ export function PagePreview({ pages, meta, scale, panel, panelChanged, busy, con
   panelChanged: (element: HTMLDivElement | null) => void; busy: boolean; controls?: ReactNode;
   currentPageChanged?: (page: number) => void;
 }) {
-  const sizes=pages.map(html=>pageSize(html,meta));
-  const offsets:number[]=[];let total=0;
-  const heights=sizes.map(size=>size.height/25.4*96*scale);
-  heights.forEach(height=>{offsets.push(total);total+=height+20;});
+  const { sizes, heights, offsets } = useMemo(() => {
+    const sizes = pages.map(html => pageSize(html, meta));
+    const heights = sizes.map(size => size.height / 25.4 * 96 * scale);
+    const offsets: number[] = [];
+    let total = 0;
+    heights.forEach(height => { offsets.push(total); total += height + 20; });
+    return { sizes, heights, offsets };
+  }, [pages, meta, scale]);
   const [scroll, setScroll] = useState(0);
   const [viewport, setViewport] = useState(800);
   const [target, setTarget] = useState(1);
+  useEffect(() => { setTarget(value => Math.min(value, Math.max(1, pages.length))); }, [pages.length]);
   const host = useRef<HTMLDivElement>(null);
   const calloutStates = useRef(new Map<string, boolean>());
   const pageMarkup = useMemo(() => pages.map(html => ({ __html: html })), [pages]);

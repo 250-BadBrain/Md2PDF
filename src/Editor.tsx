@@ -26,7 +26,7 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
     while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === next[newEnd - 1]) { oldEnd--; newEnd--; }
     for (const insertion of insertions.current) {
       if (oldEnd <= insertion.start) { insertion.start += newEnd - oldEnd; insertion.end += newEnd - oldEnd; }
-      else if (start < insertion.end || start < insertion.start) insertion.valid = false;
+      else if (start < insertion.end) insertion.valid = false;
     }
     currentSource.current = next;
   };

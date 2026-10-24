@@ -59,7 +59,7 @@ describe('Exported PDF heading outlines', () => {
   });
 
   it('keeps titles readable without Ruby readings, image anchors or duplicate KaTeX MathML', () => {
-    const headings=collectPdfHeadings(['<h1 id="a"><ruby>汉字<rp>(</rp><rt>hàn zì</rt><rp>)</rp></ruby> <img alt="图片"><span class="katex"><span class="katex-mathml"><math>x squared</math></span><span class="katex-html">x²</span></span><a class="header-anchor">#</a></h1>']);
+    const headings=collectPdfHeadings(['<h1 id="a"><ruby>汉字<rp>(</rp><rt>hàn zì</rt><rp>)</rp></ruby> <img alt="图片"><span class="katex"><span class="katex-mathml"><math>x squared<annotation encoding="application/x-tex">x^2</annotation></math></span><span class="katex-html">x²</span></span><a class="header-anchor">#</a></h1>']);
     expect(headings[0].title).toBe('汉字 图片x²');
   });
 });

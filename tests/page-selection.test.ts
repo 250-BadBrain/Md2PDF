@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import katex from 'katex';
 import { pageChapters, parsePageRange, selectPageIndices } from '../src/page-selection';
 
 describe('export page selection', () => {
@@ -30,5 +31,10 @@ describe('export page selection', () => {
   });
   it('uses the shallowest heading level for documents that start at h3', () => {
     expect(pageChapters(['<h3 id="part">部分</h3><h4 id="section">小节</h4>']).map(chapter => chapter.id)).toEqual(['part']);
+  });
+  it('uses visible formulas, ruby base text and image alternatives as chapter labels', () => {
+    const formula = katex.renderToString('x^2');
+    const html = `<h2 id="calculation"><ruby>汉字<rp>(</rp><rt>hàn zì</rt><rp>)</rp></ruby> <img alt="图片"> ${formula}<a class="header-anchor">#</a></h2>`;
+    expect(pageChapters([html])[0].title).toBe('汉字 图片 x2');
   });
 });

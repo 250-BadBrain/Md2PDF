@@ -1,3 +1,5 @@
+import { headingText } from './heading-text';
+
 export type ExportScope = { mode: 'all' | 'current' | 'chapter' | 'range'; range: string; chapter: string };
 export type PageChapter = { id: string; title: string; level: number; start: number; end: number };
 
@@ -27,9 +29,7 @@ export function pageChapters(pages: string[], chapterLevel = 2): PageChapter[] {
     for (const heading of template.content.querySelectorAll<HTMLElement>('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')) {
       if (seen.has(heading.id) || heading.closest('.document-cover,nav.table-of-contents,.table-of-contents')) continue;
       seen.add(heading.id);
-      const label = heading.cloneNode(true) as HTMLElement;
-      label.querySelectorAll('.header-anchor,rt,.katex-html').forEach(element => element.remove());
-      const title = label.textContent?.replace(/\s+/g, ' ').trim();
+      const title = headingText(heading);
       if (!title) continue;
       const content = heading.closest('.pdf-content') ?? template.content;
       const prefix = document.createRange(); prefix.selectNodeContents(content); prefix.setEndBefore(heading);

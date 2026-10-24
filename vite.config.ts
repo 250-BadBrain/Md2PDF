@@ -1,9 +1,14 @@
-import { defineConfig } from 'vite';
+import { defineConfig, normalizePath } from 'vite';
 import react from '@vitejs/plugin-react';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const generatedDirectories = ['tmp', 'test-results', 'playwright-report'].map(directory =>
+  `${normalizePath(fileURLToPath(new URL(`./${directory}`, import.meta.url)))}/**`);
 
 export default defineConfig({
+  server: { watch: { ignored: generatedDirectories } },
   worker: { format: 'es' },
   plugins: [react(), {
     name: 'offline-static-assets',

@@ -12,6 +12,7 @@ function getMermaid() {
     module.default.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
+      suppressErrorRendering: true,
       theme: 'default',
       htmlLabels: false,
       flowchart: { htmlLabels: false },
@@ -98,12 +99,6 @@ function resolveAssetUrl(src: string, markdownPath: string | undefined, assets: 
   }
 
   return cleanSrc;
-}
-
-function cleanupMermaidErrors() {
-  document
-    .querySelectorAll<HTMLElement>('.mermaid .error-icon, .mermaid .error-text')
-    .forEach((element) => element.closest('svg')?.remove());
 }
 
 function parseImagePresentation(img: HTMLImageElement) {
@@ -274,7 +269,6 @@ async function enhanceRenderedHtml(html: string, path: string | undefined, asset
       delete diagram.dataset[type];
     } catch (error) {
       signal?.throwIfAborted();
-      cleanupMermaidErrors();
       diagram.innerHTML = `<pre><code>${escapeHtml(source)}</code></pre>`;
       diagram.classList.add(type === 'mermaid' ? 'mermaid-error' : 'diagram-error');
       diagram.dataset.diagramError = `${type === 'infographic' ? 'Infographic' : type === 'plantuml' ? 'PlantUML' : 'Mermaid'}：${error instanceof Error ? error.message : String(error)}`;
