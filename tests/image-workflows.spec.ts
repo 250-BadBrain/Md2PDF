@@ -10,6 +10,41 @@ async function putImage(editor: Locator, kind: 'paste' | 'drop', name: string, c
     area.dispatchEvent(event);
   }, { kind, name, content });
 }
+
+test('dropping Markdown with an image imports the document and retains its filename', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByRole('textbox', { name: 'Markdown 源代码编辑区' });
+  await editor.fill('# Replaced document');
+  const source = '# 拖入文档\n\n![本地图](diagram.svg)';
+  await editor.evaluate((area, { source, image }) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File([source], '拖入文档.md'));
+    dataTransfer.items.add(new File([image], 'diagram.svg', { type: 'image/svg+xml' }));
+    for (const type of ['dragover', 'drop']) {
+      area.dispatchEvent(new DragEvent(type, { dataTransfer, cancelable: true, bubbles: true }));
+    }
+  }, { source, image: svg(120, 'red') });
+  await expect(editor).toHaveValue(source);
+  await expect(page.locator('.preview-panel h1')).toContainText('拖入文档');
+  await expect.poll(() => page.getByRole('img', { name: '本地图' }).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(120);
+  await page.getByLabel('PDF 导出方式').selectOption('image');
+  await page.getByLabel('图像 PDF 清晰度').selectOption('small');
+  const file = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载', exact: true }).click();
+  expect((await file).suggestedFilename()).toBe('拖入文档.pdf');
+});
+
+test('dropping several Markdown files on the preview opens batch export', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('.preview-panel').evaluate(panel => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['# First'], 'first.md'));
+    dataTransfer.items.add(new File(['# Second'], 'second.markdown'));
+    panel.dispatchEvent(new DragEvent('drop', { dataTransfer, bubbles: true, cancelable: true }));
+  });
+  await expect(page.locator('.batch-message')).toContainText('已上传多个 Markdown 文件');
+  await expect(page.getByRole('button', { name: '下载', exact: true })).toBeEnabled();
+});
 async function persisted(page: Page) {
   return page.evaluate(() => new Promise<{ source: string; images: string[] } | undefined>((resolve, reject) => {
     const id = localStorage.getItem('md2pdf:active-project'); if (!id) { resolve(undefined); return; }

@@ -155,6 +155,7 @@ textarea {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overflow-anchor: none;
   padding: 20px;
   background: #e7e7e2;
 }

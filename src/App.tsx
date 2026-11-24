@@ -362,12 +362,8 @@ function App() {
     setSingleFilePath(undefined);
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
-    const input = event.currentTarget;
-    const files = input.files;
-    if (!files || files.length === 0) return;
-
-    const selectedFiles = Array.from(files);
+  async function importFiles(selectedFiles: File[]) {
+    if (!selectedFiles.length || isUploading || isDownloading) return;
     setIsUploading(true);
     setOperationError('');
     try {
@@ -380,9 +376,15 @@ function App() {
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : '文件读取失败，请重试。');
     } finally {
-      input.value = '';
       setIsUploading(false);
     }
+  }
+
+  function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    void importFiles(files);
   }
 
   function handleSourceChange(value: string) {
@@ -517,7 +519,16 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" onDragOver={event => {
+      if (!event.dataTransfer.types.includes('Files')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = isUploading || isDownloading ? 'none' : 'copy';
+    }} onDrop={event => {
+      const files = Array.from(event.dataTransfer.files);
+      if (!files.length) return;
+      event.preventDefault();
+      void importFiles(files);
+    }}>
       <header className="top-bar">
         <h1>Md2PDF</h1>
         <div className="actions">
@@ -533,7 +544,7 @@ function App() {
           {exportMode !== 'print' || mode === 'batch' ? <select aria-label="图像 PDF 清晰度" value={exportSettings.quality} disabled={isDownloading} onChange={(event) => {
             const next = { ...exportSettings, quality: event.target.value as ExportQuality }; setExportSettings(next); saveExportSettings(next);
           }}><option value="small">小体积</option><option value="balanced">均衡</option><option value="high">高清</option></select> : null}
-          <button type="button" disabled={isDownloading || isUploading} onClick={() => inputRef.current?.click()}>
+          <button type="button" disabled={isDownloading || isUploading} title="选择文件或将 Markdown 文件拖入页面" onClick={() => inputRef.current?.click()}>
             上传
           </button>
           <button type="button" disabled={isDownloading || isUploading} onClick={() => folderInputRef.current?.click()}>

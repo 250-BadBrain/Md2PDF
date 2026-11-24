@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { replaceText } from './draft';
-import { editorLinePositions, lineOffset, sourceLocation, type SourceLocation } from './source-map';
+import { isImageFile, isMarkdownFile } from './markdown';
+import { editorLinePositions, editorTopAt, isSyncedScroll, lineOffset, setSyncedScroll, sourceLineAt, sourceLocation, type PreviewScroll, type SourceLocation } from './source-map';
 
 type Insertion = { start: number; end: number; valid: boolean };
 
@@ -76,7 +77,6 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
   }, []);
   const [find, setFind] = useState(''); const [replacement, setReplacement] = useState('');
   const [sync, setSync] = useState(false); const [showFind, setShowFind] = useState(false);
-  const syncing = useRef(false);
   const positions = useRef<number[]>([]);
   const ensurePositions=useRef<()=>void>(()=>{});
   useEffect(() => {
@@ -93,30 +93,65 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
       // Allow the mobile editor pane to become visible before measuring and focusing.
       navigationFrame = requestAnimationFrame(() => {
         dirty = true; update();
-        area.focus(); area.setSelectionRange(lineOffset(source,line), lineOffset(source,end + 1));
-        area.scrollTop = Math.max(0,(positions.current[line - 1] || 0) - area.clientHeight / 3);
+        area.focus({ preventScroll: true }); area.setSelectionRange(lineOffset(source,line), lineOffset(source,end + 1));
+        setSyncedScroll(area, Math.max(0, (positions.current[line - 1] || 0) - area.clientHeight / 3));
       });
     };
     window.addEventListener('source-navigation',navigate);
     return () => { clearTimeout(timer); cancelAnimationFrame(navigationFrame); observer.disconnect(); window.removeEventListener('source-navigation',navigate); };
   },[source,sync]);
   useEffect(() => {
-    if (!panel || !sync) return;
-    let timer: ReturnType<typeof setTimeout>;
-    const update = () => {
-      const area = editor.current; if (!area || syncing.current) return;
-      ensurePositions.current();
-      syncing.current = true;
-      const top = panel.getBoundingClientRect().top;
-      const blocks = Array.from(panel.querySelectorAll<HTMLElement>('[data-source-line]'));
-      const visible = blocks.filter((block) => block.getBoundingClientRect().bottom > top && block.getBoundingClientRect().top < top + panel.clientHeight)
-        .sort((a,b) => Math.abs(a.getBoundingClientRect().top-top) - Math.abs(b.getBoundingClientRect().top-top))[0];
-      const location = sourceLocation(visible);
-      area.scrollTop = location ? Math.max(0,(positions.current[location.line-1] || 0)-20) : panel.scrollTop / Math.max(1, panel.scrollHeight-panel.clientHeight) * (area.scrollHeight-area.clientHeight);
-      timer = setTimeout(() => { syncing.current = false; }, 50);
+    const area = editor.current;
+    if (!panel || !area || !sync) return;
+    let frame = 0;
+    const schedule = (from: HTMLElement, update: () => void) => {
+      if (isSyncedScroll(from)) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!area.clientHeight || !panel.clientHeight || panel.getAttribute('aria-busy') === 'true' || isSyncedScroll(from)) return;
+        ensurePositions.current();
+        update();
+      });
     };
-    panel.addEventListener('scroll', update);
-    return () => { panel.removeEventListener('scroll', update); clearTimeout(timer); syncing.current = false; };
+    const fromEditor = () => schedule(area, () => {
+      const top = area.scrollTop;
+      const max = area.scrollHeight - area.clientHeight;
+      const detail: PreviewScroll = {
+        line: sourceLineAt(positions.current, top),
+        edge: top <= 0 ? 'start' : top >= max - 1 ? 'end' : undefined,
+      };
+      window.dispatchEvent(new CustomEvent('preview-navigation', { detail }));
+    });
+    const fromPreview = () => schedule(panel, () => {
+      const max = panel.scrollHeight - panel.clientHeight;
+      if (panel.scrollTop <= 0 || panel.scrollTop >= max - 1) {
+        setSyncedScroll(area, panel.scrollTop <= 0 ? 0 : area.scrollHeight);
+        return;
+      }
+      const top = panel.getBoundingClientRect().top;
+      const readingTop = top + 20;
+      let nearest = Infinity;
+      let line = 0;
+      for (const block of panel.querySelectorAll<HTMLElement>('.pdf-page [data-source-line]')) {
+        const rect = block.getBoundingClientRect();
+        if (!rect.height || rect.bottom <= top || rect.top >= top + panel.clientHeight) continue;
+        const distance = Math.abs(rect.top - readingTop);
+        if (distance >= nearest) continue;
+        const location = sourceLocation(block);
+        if (!location) continue;
+        nearest = distance;
+        const progress = Math.max(0, Math.min(1, (readingTop - rect.top) / rect.height));
+        line = location.line + progress * (location.end - location.line);
+      }
+      if (line) setSyncedScroll(area, editorTopAt(positions.current, line));
+    });
+    area.addEventListener('scroll', fromEditor, { passive: true });
+    panel.addEventListener('scroll', fromPreview, { passive: true });
+    return () => {
+      area.removeEventListener('scroll', fromEditor);
+      panel.removeEventListener('scroll', fromPreview);
+      cancelAnimationFrame(frame);
+    };
   }, [panel, sync]);
   const count = find ? source.split(find).length - 1 : 0;
   const next = () => {
@@ -147,29 +182,17 @@ export function Editor({ source, change, disabled, panel, download, clear, draft
         const files = clipboard.files.length ? Array.from(clipboard.files) : Array.from(clipboard.items || []).filter(item => item.kind === 'file').map(item => item.getAsFile()).filter((file): file is File => file !== null);
         const pictures = files.filter(file => file.type.startsWith('image/'));
         if (pictures.length) { event.preventDefault(); void addImages(pictures); }
-      }} onDragOver={event => {
-        if (Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = disabled ? 'none' : 'copy'; }
       }} onDrop={event => {
         const files = Array.from(event.dataTransfer.files);
-        if (!files.length) return;
+        if (!files.length || files.some(isMarkdownFile)) return;
+        const pictures = files.filter(isImageFile);
+        if (!pictures.length) return;
         event.preventDefault();
-        if (disabled) return;
-        const pictures = files.filter(file => file.type.startsWith('image/'));
-        if (pictures.length) void addImages(pictures);
-        else setImageError('请拖入图片文件');
+        event.stopPropagation();
+        if (!disabled) void addImages(pictures);
       }}
       disabled={disabled} aria-label="Markdown 源代码编辑区" onKeyDown={(event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === 'f') { event.preventDefault(); setShowFind(true); }
-      }} onScroll={() => {
-        const area = editor.current;
-        if (sync && area && panel && !syncing.current) {
-          ensurePositions.current();
-          syncing.current = true;
-          let line = positions.current.findIndex((top) => top >= area.scrollTop);
-          if (line < 0) line = positions.current.length - 1;
-          window.dispatchEvent(new CustomEvent('preview-navigation',{detail: Math.max(1,line+1)}));
-          setTimeout(() => { syncing.current = false; }, 100);
-        }
       }} />
   </section>;
 }

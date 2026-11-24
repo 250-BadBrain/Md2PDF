@@ -1,4 +1,37 @@
 export type SourceLocation = { line: number; end: number };
+export type PreviewScroll = { line: number; edge?: 'start' | 'end' };
+
+const syncedPositions = new WeakMap<HTMLElement, number>();
+
+export function setSyncedScroll(element: HTMLElement, top: number) {
+  element.scrollTop = top;
+  // Keep the clamped browser position, including any subpixel rounding.
+  syncedPositions.set(element, element.scrollTop);
+}
+
+export function isSyncedScroll(element: HTMLElement) {
+  if (syncedPositions.get(element) === element.scrollTop) return true;
+  syncedPositions.delete(element);
+  return false;
+}
+
+export function sourceLineAt(positions: number[], top: number) {
+  let low = 0, high = positions.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (positions[mid] <= top) low = mid;
+    else high = mid - 1;
+  }
+  const span = positions[low + 1] - positions[low];
+  return low + 1 + (span > 0 ? Math.max(0, (top - positions[low]) / span) : 0);
+}
+
+export function editorTopAt(positions: number[], line: number) {
+  const index = Math.floor(line) - 1;
+  const top = positions[index] ?? 0;
+  return top + ((positions[index + 1] ?? top) - top) * (line % 1);
+}
+
 export function sourceLocation(element: Element | null): SourceLocation | undefined {
   const block = element?.closest<HTMLElement>('[data-source-line]');
   const line = Number(block?.dataset.sourceLine); const end = Number(block?.dataset.sourceEnd);
