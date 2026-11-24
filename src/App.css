@@ -907,6 +907,12 @@ textarea {
 .document-cover h1 { font-size:36px; }
 .markdown-body h1,.markdown-body h2,.markdown-body h3 { font-family:var(--pdf-heading-font,inherit); }
 .markdown-body p { margin-bottom:var(--pdf-block-gap,1em); }
+@media (min-width: 961px) {
+  .app-shell { height: 100dvh; }
+  .app-shell > :not(.workspace) { flex-shrink: 0; }
+  .workspace { grid-template-rows: minmax(0, 1fr); }
+  .workspace .editor-pane, .workspace .preview-pane { height: 100%; min-height: 0; }
+}
 @media(max-width:960px) { .editor-pane {height:calc((100vh - 56px)/2);} }
 @media(max-width:767px) {
   .top-bar { height: auto; padding: 8px 10px; flex-wrap: wrap; gap: 8px; }

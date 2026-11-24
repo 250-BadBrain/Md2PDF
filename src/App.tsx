@@ -203,9 +203,11 @@ function App() {
   }
   function applyProject(record: ProjectRecord, revision?: number) {
     const project = revision === undefined ? record : record.history[revision]; if (!project) return;
+    const fileName = project.path?.split('/').pop() || (/\.(md|markdown|txt)$/i.test(record.name) ? record.name : `${record.name}.md`);
     assetBlobs.current = project.assets;
     replaceAssetUrls(Object.fromEntries(Object.entries(project.assets).map(([path, blob]) => [path.toLowerCase(), URL.createObjectURL(blob)])));
-    setSource(project.source); setSingleFileName(record.name.endsWith('.md') ? record.name : `${record.name}.md`); setSingleFilePath(project.path);
+    setSource(project.source); setSingleFileName(fileName); setSingleFilePath(project.path);
+    setExportStatus('');
     const restored=normalizeSettings(project.preferences);
     setPreferences(restored); setSettingsSaved(saveSettings(restored)); setMode('single'); setBatchFiles([]); setDraftEnabled(true);
     setExportScope({ mode: 'all', range: '', chapter: '' }); setCurrentPage(1);
@@ -341,6 +343,7 @@ function App() {
     nextAssetUrls: AssetUrls,
   ) {
     setBatchErrorMessage('');
+    setExportStatus('');
     setShowAssets(false); setShowProperties(false); setShowProjects(false);
     recoveryEdit.current = true;
     setActiveProject(undefined); try { localStorage.removeItem(ACTIVE_PROJECT); } catch { /* unavailable */ }
@@ -588,7 +591,7 @@ function App() {
         insert={path => window.dispatchEvent(new CustomEvent('editor-insert', { detail: imageMarkdown(path, singleFilePath) }))}
         close={() => setShowAssets(false)} /> : null}
       {showProperties ? <DocumentProperties source={source} change={handleSourceChange} disabled={isDownloading || isUploading} close={() => setShowProperties(false)} /> : null}
-      {showProjects ? <ProjectLibrary disabled={isDownloading || isUploading} save={saveCurrentProject} open={applyProject} close={() => setShowProjects(false)}
+      {showProjects ? <ProjectLibrary disabled={isDownloading || isUploading} projectName={activeProject?.name} save={saveCurrentProject} open={applyProject} close={() => setShowProjects(false)}
         exportFile={async () => { await downloadBlob(await exportProject(currentProject()), 'md2pdf-project.zip'); }}
         importFile={async (file) => { const project = await importProject(file); await saveProject(project); applyProject({ ...project, history: [] }); }} /> : null}
       {showSettings ? <><LayoutSettings value={preferences} saved={settingsSaved} close={() => setShowSettings(false)} change={(value) => {

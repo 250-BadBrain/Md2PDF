@@ -13,6 +13,12 @@ test('project saves images, reloads and restores previous text and archive', asy
   await page.reload();
   await expect(page.getByRole('textbox',{name:'Markdown 源代码编辑区'})).toHaveValue('# Project\n\n![picture](picture.svg)');
   await expect(page.locator('.image-figure img')).toHaveAttribute('src',/^blob:/);
+  const markdownDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '下载 Markdown', exact: true }).click();
+  expect((await markdownDownload).suggestedFilename()).toBe('notes.md');
+  await page.getByRole('button', { name: '项目库', exact: true }).click();
+  await expect(page.getByLabel('项目名称')).toHaveValue('Restorable');
+  await page.getByRole('button', { name: '关闭项目库', exact: true }).click();
   await page.getByRole('textbox',{name:'Markdown 源代码编辑区'}).fill('# Edited');
   await expect.poll(() => page.evaluate(async () => { const {listProjects,loadProject}=await import('/src/projects.ts'); const list=await listProjects(); return (await loadProject(list[0].id))?.source; })).toBe('# Edited');
   await page.getByRole('button',{name:'项目库',exact:true}).click();

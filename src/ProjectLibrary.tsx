@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { copyProject, deleteProject, listProjects, loadProject, renameProject, restoreDeletedProject, type ProjectRecord } from './projects';
 import { usePanelFocus } from './panel-focus';
 let lastDeleted: ProjectRecord | undefined;
-export function ProjectLibrary({ disabled, save, open, importFile, exportFile, close }: {
+export function ProjectLibrary({ disabled, projectName, save, open, importFile, exportFile, close }: {
   disabled: boolean; save: (name: string, fresh: boolean) => Promise<void>; open: (project: ProjectRecord, revision?: number) => void;
+  projectName?: string;
   importFile: (file: File) => Promise<void>; exportFile: () => Promise<void>; close: () => void;
 }) {
   const [projects, setProjects] = useState<Awaited<ReturnType<typeof listProjects>>>([]);
-  const [name, setName] = useState('我的文档'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  const [name, setName] = useState(projectName ?? '我的文档'); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  useEffect(() => { setName(projectName ?? '我的文档'); }, [projectName]);
   const [selected, setSelected] = useState<ProjectRecord>(); const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(''); const [renaming, setRenaming] = useState(''); const [newName, setNewName] = useState('');
   const [deleted, updateDeleted] = useState<ProjectRecord | undefined>(lastDeleted); const [usage, setUsage] = useState('');
@@ -29,7 +31,7 @@ export function ProjectLibrary({ disabled, save, open, importFile, exportFile, c
     {usage ? <p role="status">{usage}</p> : null}
     <fieldset disabled={disabled || busy}>
       <label>项目名称<input aria-label="项目名称" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} /></label>
-      <button onClick={() => void run(() => save(name.trim() || '我的文档', false))}>保存当前项目</button>
+      <button onClick={() => void run(() => save(name.trim() || projectName || '我的文档', false))}>保存当前项目</button>
       <button onClick={() => void run(() => save(name.trim() || '我的文档', true))}>另存为新项目</button>
       <button onClick={() => void run(exportFile)}>导出项目包</button>
       <button onClick={() => input.current?.click()}>导入项目包</button>

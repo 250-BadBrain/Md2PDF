@@ -4,6 +4,24 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { capturePrintedPdf } from './print';
 import { extractPdfText } from './pdf-text';
 
+test('a removed chapter selection can be recovered when only one chapter remains', async ({ page }) => {
+  await page.goto('/');
+  const editor = page.getByRole('textbox', { name: 'Markdown 源代码编辑区' });
+  const preview = page.locator('.preview-panel');
+  await editor.fill('# Original\n\nBody');
+  await expect(preview.locator('h1')).toContainText('Original');
+  await page.locator('.page-selection summary').click();
+  await page.getByLabel('导出范围', { exact: true }).selectOption('chapter');
+  const chapter = page.getByLabel('导出章节');
+  await expect(chapter).toHaveValue('original');
+  await editor.fill('# Renamed\n\nBody');
+  await expect(preview.locator('h1')).toContainText('Renamed');
+  await expect(chapter.locator('option:checked')).toHaveText('请选择章节');
+  await expect(page.getByRole('button', { name: '打印／保存 PDF' })).toBeDisabled();
+  await chapter.selectOption('renamed');
+  await expect(page.getByRole('button', { name: '打印／保存 PDF' })).toBeEnabled();
+});
+
 const source = `---
 title: Selected pages
 author: Local author

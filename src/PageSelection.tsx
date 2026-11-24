@@ -5,15 +5,17 @@ export function PageSelection({ value, change, chapters, total, currentPage, cou
   currentPage: number; count: number; error: string; disabled: boolean;
 }) {
   const label = value.mode === 'all' ? '全部页面' : value.mode === 'current' ? `当前第 ${currentPage} 页` : value.mode === 'chapter' ? '章节所在页面' : '指定页码';
+  const chapter = chapters.some(item => item.id === value.chapter) ? value.chapter : '';
   return <details className="page-selection">
     <summary>导出范围：{label}（{count} / {total} 页）</summary>
     <div className="page-selection-fields">
       <label>导出范围<select aria-label="导出范围" disabled={disabled} value={value.mode} onChange={event => {
         const mode = event.target.value as ExportScope['mode'];
-        change({ ...value, mode, chapter: value.chapter || chapters[0]?.id || '' });
+        change({ ...value, mode, chapter: chapter || chapters[0]?.id || '' });
       }}><option value="all">全部页面</option><option value="current">当前预览页</option><option value="chapter" disabled={!chapters.length}>章节所在页面</option><option value="range">指定页码</option></select></label>
       {value.mode === 'range' ? <label>页码<input aria-label="导出页码" value={value.range} disabled={disabled} placeholder="1-3,5,8-10" onChange={event => change({ ...value, range: event.target.value })} /></label> : null}
-      {value.mode === 'chapter' ? <label>章节<select aria-label="导出章节" disabled={disabled} value={value.chapter} onChange={event => change({ ...value, chapter: event.target.value })}>
+      {value.mode === 'chapter' ? <label>章节<select aria-label="导出章节" disabled={disabled || !chapters.length} value={chapter} onChange={event => change({ ...value, chapter: event.target.value })}>
+        <option value="" disabled>{chapters.length ? '请选择章节' : '当前文档没有可选章节'}</option>
         {chapters.map(chapter => <option key={chapter.id} value={chapter.id}>{chapter.title}（{chapter.start + 1}-{chapter.end + 1} 页）</option>)}
       </select></label> : null}
       {value.mode === 'current' ? <span>导出当前预览第 {currentPage} 页</span> : null}

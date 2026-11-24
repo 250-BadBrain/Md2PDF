@@ -20,9 +20,16 @@ export function PagePreview({ pages, meta, scale, panel, panelChanged, busy, con
   }, [pages, meta, scale]);
   const [scroll, setScroll] = useState(0);
   const [viewport, setViewport] = useState(800);
-  const [target, setTarget] = useState(1);
+  const [target, setTarget] = useState('1');
   const [navigation, setNavigation] = useState<Navigation | null>(null);
-  useEffect(() => { setTarget(value => Math.min(value, Math.max(1, pages.length))); }, [pages.length]);
+  useEffect(() => {
+    setTarget(value => {
+      const number = Number(value);
+      return Number.isInteger(number) && number > pages.length ? String(Math.max(1, pages.length)) : value;
+    });
+  }, [pages.length]);
+  const targetPage = Number(target);
+  const canJump = Number.isInteger(targetPage) && targetPage >= 1 && targetPage <= pages.length;
   const host = useRef<HTMLDivElement>(null);
   const calloutStates = useRef(new Map<string, boolean>());
   const pageMarkup = useMemo(() => pages.map(html => ({ __html: html })), [pages]);
@@ -159,12 +166,15 @@ export function PagePreview({ pages, meta, scale, panel, panelChanged, busy, con
   return <>
     <div className="preview-controls" aria-label="PDF 预览工具">
     {controls}
-    {pages.length > 1 ? <div className="page-navigation">
+    {pages.length > 1 ? <form className="page-navigation" onSubmit={event => {
+      event.preventDefault();
+      if (canJump) jump(targetPage - 1);
+    }}>
       <span>共 {pages.length} 页</span>
-      <label>跳至 <input aria-label="跳转页码" type="number" min={1} max={pages.length} value={target}
-        onChange={(event) => setTarget(Math.max(1, Math.min(pages.length, Number(event.target.value) || 1)))} /></label>
-      <button type="button" onClick={() => jump(target - 1)}>跳转</button>
-    </div> : null}
+      <label>跳至 <input aria-label="跳转页码" type="number" min={1} max={pages.length} required value={target}
+        onChange={event => setTarget(event.target.value)} /></label>
+      <button type="submit" disabled={!canJump}>跳转</button>
+    </form> : null}
     </div>
     <div className="preview-panel" ref={panelChanged} aria-busy={busy} aria-label="PDF 页面">
     <div ref={host} className="pdf-document pdf-document-preview" onClick={(event) => {

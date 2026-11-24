@@ -4,6 +4,32 @@ const source = Array.from({ length: 20 }, (_, index) =>
   `# Page ${index + 1}\n\n${index === 0 ? '[Last page](#page-20)\n\n' : ''}Body ${index + 1}`,
 ).join('\n\n[pagebreak]\n\n');
 
+test('desktop panes fit below a wrapped toolbar and visible status messages', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto('/');
+  await page.evaluate(() => window.dispatchEvent(new Event('offline-ready')));
+  await expect(page.getByText('应用已可离线使用')).toBeVisible();
+  const layout = await page.locator('.workspace').evaluate(workspace => ({
+    editorBottom: workspace.querySelector('.editor-pane')!.getBoundingClientRect().bottom,
+    previewBottom: workspace.querySelector('.preview-pane')!.getBoundingClientRect().bottom,
+    height: innerHeight,
+  }));
+  expect(layout.editorBottom).toBeLessThanOrEqual(layout.height + 1);
+  expect(layout.previewBottom).toBeLessThanOrEqual(layout.height + 1);
+});
+
+test('page jumps require a whole number and can be submitted with Enter', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('textbox', { name: 'Markdown 源代码编辑区' }).fill(source);
+  await expect(page.locator('.pdf-page-shell')).toHaveCount(20);
+  const jump = page.getByLabel('跳转页码');
+  await jump.fill('1.5');
+  await expect(page.getByRole('button', { name: '跳转', exact: true })).toBeDisabled();
+  await jump.fill('12');
+  await jump.press('Enter');
+  await expect(page.locator('[data-page="12"] h1')).toBeInViewport();
+});
+
 async function expectSeparateControls(page: Page) {
   const geometry = await page.locator('.preview-pane').evaluate(element => {
     const controls = element.querySelector('.preview-controls')!.getBoundingClientRect();
